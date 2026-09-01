@@ -25,13 +25,34 @@ def _acc(rows: list[dict[str, Any]]) -> tuple[float, float, float, int]:
     return (s / n, lo, hi, n)
 
 
+def _same_kind_pairs(row: dict[str, Any]) -> int:
+    """How many pairs of same-kind task instances the conversation held.
+
+    Derived from the ground-truth keys (`shopping_0`, `shopping_1`, ...) rather than
+    stored, so it is correct for rows written before compositions were configurable.
+    Same-kind pairs are the only place a misattribution can occur, since different kinds
+    draw from disjoint vocabularies.
+    """
+    kinds: dict[str, int] = defaultdict(int)
+    for slot in (row.get("expected") or {}):
+        kinds[slot.rsplit("_", 1)[0]] += 1
+    return sum(c * (c - 1) // 2 for c in kinds.values())
+
+
 def _cell_order(row: dict[str, Any]) -> tuple:
     """Sort conditions the way they vary, not alphabetically.
 
     Sorting on the cell string puts `n120` before `n40`, which reads as a reversed dose
     on a chart whose whole point is the trend across padding.
+
+    Same-kind pair count is part of the key because without it `len_medium` and
+    `same_kind_2` are identical -- same task count, ops and noise -- and tie. They would
+    then order by dict insertion, which is to say by whatever the sweep happened to run
+    first, and the one dimension that actually distinguishes them would be the one the
+    chart ignored.
     """
-    return (row.get("n_tasks", 0), row.get("n_ops", 0), row.get("n_noise", 0))
+    return (row.get("n_tasks", 0), _same_kind_pairs(row),
+            row.get("n_ops", 0), row.get("n_noise", 0))
 
 
 def _cell_label(row: dict[str, Any]) -> str:

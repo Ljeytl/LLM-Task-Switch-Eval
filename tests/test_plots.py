@@ -10,7 +10,8 @@ from pathlib import Path
 
 import pytest
 
-from taskswitch.plots import _cell_label, _cell_order, dumbbell, taxonomy_bars
+from taskswitch.plots import (_cell_label, _cell_order, _same_kind_pairs, dumbbell,
+                              taxonomy_bars)
 
 
 def _row(model, label, ordering, correct, n_tasks=2, n_ops=6, n_noise=0, failures=()):
@@ -79,3 +80,38 @@ def test_unparseable_rows_are_excluded_from_accuracy(tmp_path: Path):
                                                   parse_ok=False)]
     acc, _, _, n = _acc(rows)
     assert n == 1 and acc == 1.0
+
+
+class TestSameKindOrdering:
+    """`len_medium` and `same_kind_2` share task count, ops and noise. Without the
+    same-kind pair count in the sort key they tie and order by insertion, hiding the only
+    dimension that distinguishes them."""
+
+    @staticmethod
+    def _row(expected, n_tasks, n_noise=40):
+        return {"expected": expected, "n_tasks": n_tasks, "n_ops": 6, "n_noise": n_noise}
+
+    def test_counts_pairs_from_ground_truth_keys(self):
+        assert _same_kind_pairs(self._row({"shopping_0": [], "schedule_0": []}, 2)) == 0
+        assert _same_kind_pairs(self._row({"shopping_0": [], "shopping_1": []}, 2)) == 1
+        assert _same_kind_pairs(
+            self._row({"shopping_0": [], "schedule_0": [], "shopping_1": []}, 3)) == 1
+        assert _same_kind_pairs(self._row(
+            {"shopping_0": [], "schedule_0": [], "shopping_1": [], "schedule_1": []}, 4)) == 2
+
+    def test_missing_expected_is_zero_not_a_crash(self):
+        assert _same_kind_pairs({"n_tasks": 2}) == 0
+
+    def test_same_kind_cell_no_longer_ties_with_len_medium(self):
+        medium = self._row({"shopping_0": [], "schedule_0": []}, 2)
+        same = self._row({"shopping_0": [], "shopping_1": []}, 2)
+        assert _cell_order(medium) != _cell_order(same)
+        assert _cell_order(medium) < _cell_order(same)
+
+    def test_length_arm_stays_contiguous_and_in_dose_order(self):
+        cells = [("len_long", self._row({"shopping_0": [], "schedule_0": []}, 2, 120)),
+                 ("same_kind_2", self._row({"shopping_0": [], "shopping_1": []}, 2, 40)),
+                 ("len_short", self._row({"shopping_0": [], "schedule_0": []}, 2, 0)),
+                 ("len_medium", self._row({"shopping_0": [], "schedule_0": []}, 2, 40))]
+        got = [n for n, _ in sorted(cells, key=lambda kv: _cell_order(kv[1]))]
+        assert got == ["len_short", "len_medium", "len_long", "same_kind_2"]
