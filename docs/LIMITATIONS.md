@@ -247,6 +247,36 @@ reporting it as one would overclaim.
 
 ---
 
+## 5c. The negative control is weaker than it looks
+
+`ctrl_1task` reports delta **+0.0pp** with **0/25** discordance on both models, and that
+reads as a strong validation. Most of it is true by construction.
+
+With one task there is nothing to interleave, so `order_ops` returns the same sequence for
+both orderings and the two conversations render **byte-identical prompts** (verified: the
+turn lists hash equal at `n_tasks=1` and differ at `n_tasks=2`). The response cache is
+keyed on the rendered prompt, so the second call is a cache hit on the first. One
+inference happens and its result is compared against itself.
+
+So the control establishes:
+
+- that a one-task conversation really has no ordering degrees of freedom — a genuine
+  property of the generator, and the thing most likely to break if `order_ops` were
+  wrong;
+- that the pipeline runs end to end and the scorer agrees with itself.
+
+It does **not** establish that the model is stable under repetition, because the model was
+asked once. A reviewer reading `+0.0pp, 0/25` as evidence of run-to-run determinism would
+be reading more into it than is there, and I presented it that way before checking.
+
+`tools/determinism_check.py` closes the gap: it runs both halves of a one-task pair with
+the cache **disabled**, so two independent calls receive the identical prompt, and reports
+how often they agree. That is the number that bounds how much of a measured delta could be
+noise. It asserts the byte-identity premise before measuring, so it cannot silently
+degrade into measuring ordering instead.
+
+---
+
 ## 6. Bit-exact reproducibility is not achievable
 
 Batch-invariant kernels do not exist on Metal, so identical inputs can produce slightly
