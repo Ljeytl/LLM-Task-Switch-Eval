@@ -104,6 +104,61 @@ only from dissimilar task types would conclude that models never misfile, and wo
 wrong. That generalises past this project: an eval that never produces a failure mode has
 not shown the failure mode is absent.
 
+This claim — misattribution needs a *same-kind* neighbour — is the one that survives the
+audit in the next beat. The stronger claim I initially wanted to make from the same table,
+that misattribution scales with task count, does not.
+
+### 4c. …and then I checked whether that finding was what it looked like. It wasn't.
+
+**Lead with this if there is time for only one methodology beat.** It is the strongest
+evidence of how I work, because it is me auditing my own headline after I already liked it.
+
+The task-count arm gave a clean monotone story — misattribution **0 → 8 → 59** across 2,
+3 and 4 tasks, and joint-accuracy delta **−12 → −20 → −28pp**. I had the sentence written:
+switch cost scales with the number of live states.
+
+Then I looked at what the compositions actually were. `tasks_for(n)` deals from
+`[SHOPPING, SCHEDULE]` round-robin:
+
+| tasks | slots | same-kind pairs | misattribution |
+|---:|---|---:|---:|
+| 2 | shopping_0, schedule_0 | 0 | 0 |
+| 3 | + shopping_1 | 1 | 8 |
+| 4 | + schedule_1 | 2 | 59 |
+
+Kinds have **disjoint vocabularies**, so a same-kind pair is the only place a
+misattribution can occur at all — and pair count is perfectly collinear with task count
+across every cell I ran. The number is real. The *explanation* I was about to attach to it
+was not identified.
+
+Two things I did about it:
+
+1. **Reported the weaker claim.** The data support "misattribution needs a confusable
+   neighbour," not "misattribution grows with task count." A 4-task conversation over four
+   *distinct* kinds might show none.
+2. **Split the events by ordering**, which is further deflationary: 4 tasks is
+   **25 blocked vs 34 interleaved**. Substantial misattribution occurs in *blocked*
+   ordering, where the two shopping lists are never interleaved with each other. So
+   similarity drives the bulk and ordering modulates it by about a third. The
+   joint-accuracy delta is a genuine ordering effect; the misattribution count largely is
+   not, and reporting it as one would have overclaimed.
+
+**And built the experiment that settles it** (D18): `same_kind_2` is `[shopping, shopping]`
+— two tasks, one same-kind pair. Against `len_medium` it holds task count fixed and varies
+pair count; against `tasks_3` it holds pair count fixed and varies task count.
+
+*If asked "why not just add more task types?"* — four distinct kinds would break the
+collinearity too, but it needs two more state machines, vocabularies and template sets, and
+answers a different question less sharply. The one-line cell answers the question I
+actually have, which is whether the number I am about to report means what I think.
+
+*If asked what it cost* — not a config edit. Cells were specified by count only, and the
+cell id `t{n}_o{ops}_n{noise}` could not distinguish `[shopping, schedule]` from
+`[shopping, shopping]`. The signature is appended only for non-canonical compositions so
+committed result ids stay byte-identical; and rows now record their kinds, because
+`--rescore` rebuilt states from the count and would have graded an explicit composition
+against the wrong answer key.
+
 ### 5. Quality, and where it falls short
 - Token match verified against Ollama's own `prompt_eval_count`, not estimated
 - Calibration before the sweep: the originally planned `n_ops=24` sat at **0.00** blocked
@@ -114,6 +169,8 @@ not shown the failure mode is absent.
   would ever have surfaced** — stale values (a dropped REMOVE) reported as
   hallucinations. Re-scoring changed the labels and 0 outcomes, which is the correct
   behaviour and shows diagnosis and scoring are properly separated.
+- The task-count headline is reported with its confound attached, in the results table
+  itself rather than in a footnote — see beat 4c
 - Honest limitation: one synthetic domain, templated turns, no generalisation claim
 
 ### 6. Next
@@ -158,6 +215,21 @@ between two same-kind lists is detectable. Be precise about what the arm asks th
 amount of work across more live states at a fixed token count — not the marginal cost of
 adding a task. That is the unavoidable price of not re-confounding task count with
 conversation length.
+
+There is a *second* confound in the same arm, and I would raise it before being asked:
+same-kind pairs rise in lockstep with task count under the canonical composition
+(0, 0, 1, 2 for 1-4 tasks), and a same-kind pair is the only place misattribution can
+occur. So the arm cannot separate "more tasks" from "a confusable neighbour". The
+`same_kind_2` cell breaks the collinearity — see beat 4c.
+
+**Is the switch-cost story just the misattribution story?**
+No, and keeping them apart matters. Joint accuracy falls under interleaving in cells with
+*zero* same-kind pairs (`len_short` -16.0pp, `len_medium` -12.0pp, both two dissimilar
+tasks), so the ordering effect exists without any possibility of misfiling. Conversely
+misattribution is substantial under *blocked* ordering (25 of 59 events at 4 tasks), where
+same-kind lists are never interleaved with each other. Two distinct mechanisms that the
+task-count cells happen to vary together: interleaving costs accuracy, and similarity
+costs attribution.
 
 **Would this transfer to a real product conversation?**
 Unknown, and I do not claim it. This is an existence proof that switch cost is
