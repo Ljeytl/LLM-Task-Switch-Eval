@@ -16,9 +16,14 @@ $PY tools/make_readme_results.py > /dev/null && echo "wrote results/RESULTS.md"
 echo "==> 4. Regenerate the end-to-end walkthrough from a real pair"
 $PY tools/make_walkthrough.py
 
-echo "==> 5. Commit a small sample so a reviewer who runs nothing still sees output"
-head -n 40 results/sweep.jsonl > results/sample.jsonl
-echo "wrote results/sample.jsonl ($(wc -l < results/sample.jsonl) rows)"
+echo "==> 5. Regenerate the power analysis from the observed discordance"
+$PY tools/power_analysis.py results/sweep.jsonl > results/POWER.md
+echo "wrote results/POWER.md"
 
-echo "==> 6. Test suite"
+echo "==> 6. Commit a small sample so a reviewer who runs nothing still sees output"
+# Stratified, not `head`: rows are written cell by cell, so the first N are all one
+# condition from one model, and both halves of every pair are kept together.
+$PY tools/make_sample.py results/sweep.jsonl results/sample.jsonl
+
+echo "==> 7. Test suite"
 $PY -m pytest tests/ -q | tail -n 2

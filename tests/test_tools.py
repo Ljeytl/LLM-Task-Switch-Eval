@@ -8,6 +8,7 @@ too, so it gets tests.
 import json
 import subprocess
 import sys
+from collections import Counter, defaultdict
 from pathlib import Path
 
 import pytest
@@ -15,6 +16,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 
+from make_sample import stratified  # noqa: E402
 from audit_taxonomy import (BUCKETS, canon_schedule, canon_shopping, entries,  # noqa: E402
                             grounding_pass, identities, split_detail)
 
@@ -127,3 +129,43 @@ def test_tool_runs_end_to_end_on_a_small_file(script, tmp_path: Path):
 def test_buckets_cover_every_failure_enum_value():
     from taskswitch.scorer import Failure
     assert set(BUCKETS) == {f.value for f in Failure}
+
+
+class TestStratifiedSample:
+    """The committed sample is the only output a reviewer who runs nothing will see.
+    `head -n 40` gave 40 rows of one condition from one model, because rows are written
+    cell by cell — the reviewer would have concluded the harness only runs controls."""
+
+    @staticmethod
+    def _rows(models=("m1", "m2"), cells=("c1", "c2", "c3"), seeds=range(5)):
+        return [{"model": m, "cell": c, "seed": s, "ordering": o, "label": c}
+                for m in models for c in cells for s in seeds
+                for o in ("blocked", "interleaved")]
+
+    def test_spans_every_model_and_cell(self):
+        out = stratified(self._rows())
+        assert {(r["model"], r["cell"]) for r in out} == {
+            (m, c) for m in ("m1", "m2") for c in ("c1", "c2", "c3")}
+
+    def test_keeps_both_halves_of_every_pair(self):
+        out = stratified(self._rows())
+        seen = defaultdict(set)
+        for r in out:
+            seen[(r["model"], r["cell"], r["seed"])].add(r["ordering"])
+        assert all(v == {"blocked", "interleaved"} for v in seen.values())
+
+    def test_respects_the_per_cell_budget(self):
+        out = stratified(self._rows(), pairs_per_cell=2)
+        per_cell = Counter((r["model"], r["cell"]) for r in out)
+        assert set(per_cell.values()) == {4}, "2 pairs = 4 rows per cell"
+
+    def test_drops_unpaired_rows(self):
+        rows = [{"model": "m", "cell": "c", "seed": 1, "ordering": "blocked"}]
+        assert stratified(rows) == [], "half a pair demonstrates no comparison"
+
+    def test_is_deterministic_regardless_of_row_order(self):
+        rows = self._rows()
+        a = stratified(rows)
+        b = stratified(list(reversed(rows)))
+        assert [(r["model"], r["cell"], r["seed"], r["ordering"]) for r in a] == \
+               [(r["model"], r["cell"], r["seed"], r["ordering"]) for r in b]
