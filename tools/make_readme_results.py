@@ -42,10 +42,22 @@ value there would invalidate everything below it.
 
 """
 
+#: Reading order for conditions. Alphabetical puts len_long before len_medium before
+#: len_short, i.e. exactly backwards along the axis the arm varies. Unknown labels sort
+#: last, alphabetically, so a new cell appears rather than vanishing.
+CELL_ORDER = ["ctrl_1task", "len_short", "len_medium", "len_long",
+              "same_kind_2", "tasks_3", "tasks_4"]
+
+
+def cell_rank(label: str) -> tuple[int, str]:
+    return (CELL_ORDER.index(label) if label in CELL_ORDER else len(CELL_ORDER), label)
+
+
 out = [PREAMBLE, "### Joint goal accuracy by condition\n",
        "| model | condition | n pairs | blocked | interleaved | delta (pp) | 95% CI | McNemar b/c | p |",
        "|---|---|---:|---:|---:|---:|---|---|---:|"]
-for (model, label), rs in sorted(groups.items()):
+for (model, label), rs in sorted(groups.items(),
+                                key=lambda kv: (kv[0][0], cell_rank(kv[0][1]))):
     ok = [r for r in rs if r["parse_ok"]]
     b, i = paired(ok)
     if not b:
@@ -106,6 +118,44 @@ if not sub.get("misattributed"):
                "two lists of the SAME kind with disjoint vocabularies, where misfiling would "
                "be unmistakable, so check whether those cells are present before concluding "
                "anything general.")
+else:
+    # Misattribution occurred, which is the v2 result. It is confounded, and the
+    # confound has to travel with the number rather than sit in a footnote nobody
+    # opens -- see docs/LIMITATIONS.md 5b.
+    import collections as _c
+
+    def _same_kind_pairs(row):
+        kinds = _c.Counter(t.split("_")[0] for t in (row.get("expected") or {}))
+        return sum(c * (c - 1) // 2 for c in kinds.values())
+
+    by_cell = _c.defaultdict(lambda: [0, 0, 0])   # events, convs, pairs
+    for r in rows:
+        n = r["failures"].count("misattributed")
+        rec = by_cell[(r.get("label", r["cell"]), _same_kind_pairs(r), r["n_tasks"])]
+        rec[0] += n
+        rec[1] += 1 if n else 0
+        rec[2] += 1
+    out += ["\n**Misattribution occurred, and the obvious reading of it is wrong.**\n",
+            "| condition | tasks | same-kind pairs | events | conversations affected |",
+            "|---|---:|---:|---:|---|"]
+    for (label, pairs, n_tasks), (ev, convs, tot) in sorted(
+            by_cell.items(), key=lambda kv: cell_rank(kv[0][0])):
+        out.append(f"| {label} | {n_tasks} | {pairs} | {ev} | {convs}/{tot} |")
+
+    by_ord = _c.defaultdict(int)
+    for r in rows:
+        by_ord[r["ordering"]] += r["failures"].count("misattributed")
+    out.append(
+        f"\nTwo things keep this from being a clean task-count effect. First, kinds have "
+        f"disjoint vocabularies, so a same-kind pair is the *only* place a misattribution "
+        f"can occur — and under the canonical composition the pair count rises in lockstep "
+        f"with the task count, so the two cannot be separated by the count cells alone. "
+        f"That is what the `same_kind_2` cell exists to break. Second, the events split "
+        f"{by_ord['blocked']} blocked / {by_ord['interleaved']} interleaved: substantial "
+        f"misattribution happens in *blocked* ordering, where same-kind lists are never "
+        f"interleaved with each other at all. Similarity drives the bulk of it and "
+        f"ordering modulates it. The joint-accuracy delta above is a genuine ordering "
+        f"effect; this count largely is not.")
 
 per_task, clusters = [], []
 for r in rows:

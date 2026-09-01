@@ -140,3 +140,41 @@ class TestShippedConfig:
             blocked, inter = build_pair(1, tasks, cell["n_ops"], cfg["n_false"],
                                         cell["n_noise"])
             assert blocked.token_count == inter.token_count, cell["label"]
+
+
+class TestRescoreReconstruction:
+    """`--rescore` rebuilds each conversation from its row and regrades it. If the
+    reconstruction is wrong the rescore grades against the wrong answer key and reports
+    confident nonsense, so it is checked directly: rebuild every row on disk and compare
+    the derived ground truth to the stored one. Needs no inference.
+    """
+
+    @staticmethod
+    def _rows():
+        import json
+        from pathlib import Path
+        for name in ("results/sample.jsonl", "results/sweep.jsonl"):
+            p = Path(name)
+            if p.exists() and p.stat().st_size > 1:
+                return [json.loads(line) for line in p.read_text().splitlines() if line]
+        return []
+
+    def test_every_row_on_disk_reconstructs(self):
+        rows = self._rows()
+        if not rows:
+            pytest.skip("no results on disk yet")
+        for r in rows:
+            tasks = R.resolve_tasks(r.get("tasks") or r["n_tasks"])
+            pair = build_pair(r["seed"], tasks, r["n_ops"], r["n_false"], r["n_noise"])
+            conv = pair[0] if r["ordering"] == "blocked" else pair[1]
+            assert conv.expected == r["expected"], f"{r['cell']} seed {r['seed']}"
+            assert conv.cell == r["cell"]
+
+    def test_legacy_rows_without_tasks_still_reconstruct(self):
+        """Rows predating D18 carry only `n_tasks`. The fallback must reproduce the
+        canonical composition exactly, or every committed result becomes unrescoreable."""
+        legacy = {"n_tasks": 3, "seed": 7, "n_ops": 6, "n_false": 2, "n_noise": 40}
+        tasks = R.resolve_tasks(legacy.get("tasks") or legacy["n_tasks"])
+        assert tasks == default_tasks(3)
+        blocked, _ = build_pair(7, tasks, 6, 2, 40)
+        assert blocked.cell == "t3_o6_n40", "legacy ids must survive the signature change"
