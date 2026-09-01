@@ -79,7 +79,7 @@ Start with `README.md`, then:
 | defend the statistics | `docs/STATS.md` |
 | answer "why not X?" | `docs/DECISIONS.md` |
 | know what is broken | `docs/LIMITATIONS.md` |
-| prepare for the walkthrough | `prep/TALK.md` (local, not in git) |
+| prepare for the walkthrough | `docs/TALK.md` |
 | see the numbers | `results/RESULTS.md`, `results/POWER.md` |
 | see the v1 numbers and why they differ | `results/v1/README.md` |
 

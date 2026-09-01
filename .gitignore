@@ -12,7 +12,4 @@ files_unzipped/
 Build Something*.pdf
 # Private prep: walkthrough script, timing, question bank.
 prep/
-results/cache/bugs/
-results/bugs_sweep.jsonl
-results/bugs_demo.jsonl
 taskswitch.egg-info/

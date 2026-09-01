@@ -33,6 +33,12 @@
   this instrument.
 - Corrected stale cell, corpus, test, calibration, power and v1/v2 documentation.
 
+### Removed
+- The sequential `bugqueue` prototype is held outside the interview release. Its current
+  endpoint is implied by the prompt and it changes turn types and token structure between
+  conditions, so it does not yet measure defect-resolution quality. The preserved
+  `feature/sequential-bugqueue` branch remains available for a future redesign.
+
 ### Next
 - Counterbalance blocked-task order and interleaved starting position before a
   confirmatory switch-cost run.

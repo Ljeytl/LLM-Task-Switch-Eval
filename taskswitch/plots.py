@@ -7,10 +7,11 @@ from pathlib import Path
 from typing import Any
 
 import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt   # noqa: E402
 
-from .stats import wilson          # noqa: E402
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt  # noqa: E402
+
+from .stats import wilson  # noqa: E402
 
 BLOCKED_C, INTER_C = "#4C78A8", "#E45756"
 
@@ -75,8 +76,8 @@ def dumbbell(rows: list[dict[str, Any]], out_path: Path) -> None:
         return
     fig, ax = plt.subplots(figsize=(9, 0.55 * len(keys) + 2.2))
     for y, key in enumerate(keys):
-        b, lo_b, hi_b, nb = _acc(groups[key]["blocked"])
-        i, lo_i, hi_i, ni = _acc(groups[key]["interleaved"])
+        b, lo_b, hi_b, _nb = _acc(groups[key]["blocked"])
+        i, lo_i, hi_i, _ni = _acc(groups[key]["interleaved"])
         ax.plot([b, i], [y, y], color="#999", lw=2, zorder=1)
         ax.hlines(y, lo_b, hi_b, color=BLOCKED_C, lw=1, alpha=.5)
         ax.hlines(y, lo_i, hi_i, color=INTER_C, lw=1, alpha=.5)

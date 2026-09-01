@@ -20,8 +20,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from run import resolve_tasks                                   # noqa: E402
-from taskswitch.generator import build_pair                     # noqa: E402
+from run import resolve_tasks  # noqa: E402
+from taskswitch.generator import build_pair  # noqa: E402
 from taskswitch.runner import CACHE_DIR, ModelSpec, cache_key  # noqa: E402
 
 

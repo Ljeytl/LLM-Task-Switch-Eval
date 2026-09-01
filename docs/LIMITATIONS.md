@@ -53,7 +53,7 @@ task-irrelevant content" move together. A result showing switch cost rising with
 cannot distinguish "the model struggles with distance" from "the model struggles with
 distractors."
 
-The run made clear this is not a minor caveat — **for one of the two models**. On
+The v1 run made clear this is not a minor caveat — **for one of the two models**. On
 `qwen2.5-coder:7b`, blocked joint accuracy fell from **0.90 at zero noise to 0.47 with 40
 noise turns**, a 43-point drop from padding alone, more than double the largest switch
 cost measured anywhere in the sweep. On `gemma4:12b`, the identical padding on the
@@ -61,8 +61,8 @@ identical seeds moved accuracy from **0.90 to 0.97** — no cost at all.
 
 I wrote the general version of this claim ("noise is a difficulty driver, not neutral
 padding") from the qwen data before gemma4 had run. It is not general. Noise sensitivity
-is a property of the model, and a single-model result would have shipped it as a property
-of the design.
+was model-dependent in this run, and a single-model result would have shipped it as a
+property of the design.
 
 **The v2 refactor invalidated the calibration a second time.** `n_ops = 6` was measured
 against v1 templates. v2 names the target list in every turn ("add milk to my grocery
@@ -454,12 +454,3 @@ that overlapped, and should not be read as a throughput measurement.
 Clean per-model timings are the ones recorded separately during the pre-flight
 benchmark: prefill ~274-348 tok/s and generation ~16-21 tok/s on `qwen2.5-coder:7b`,
 measured with nothing else on the GPU.
-
----
-
-## 12. `bugqueue` is not token-matched
-
-The sequential-defect track compares accumulate (pile reports) vs ticket (report-fix
-pacing). REPORT and FIX turns differ, so unlike `taskswitch` the orderings are not the
-identical multiset of tokens. It does not execute code — symbol values stand in for
-function return values.

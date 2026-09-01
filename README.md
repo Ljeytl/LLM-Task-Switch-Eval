@@ -16,7 +16,7 @@ is inconclusive: it establishes neither a switch cost nor its absence.
 **Exploratory pattern.** At a fixed token count and fixed total operation count, qwen's
 point estimates became more negative as the number of live states increased:
 
-| live tasks | delta | 95% bootstrap CI | raw p | misattribution entries |
+| live tasks | delta | 95% paired-bootstrap interval | raw p | misattribution entries |
 |---:|---:|---|---:|---:|
 | 2 | −12.0pp | [−36.0, +12.0] | 0.508 | 0 |
 | 3 | −20.0pp | [−36.0, −4.0] | 0.063 | 8 |
@@ -132,16 +132,6 @@ claim requires counterbalancing blocked-task order and interleaved starting posi
 
 See [`docs/WALKTHROUGH.md`](docs/WALKTHROUGH.md) for one conversation traced end to end,
 generated from real output.
-
-### Sequential related bugs (`bugqueue`)
-
-Models piling defect reports before fixes land vs report-fix pacing on one module
-(`checkout.py`). See [`docs/BUGQUEUE.md`](docs/BUGQUEUE.md).
-
-```bash
-.venv/bin/python -m pytest tests/test_bugqueue.py -q
-.venv/bin/python run_bugs.py --demo
-```
 
 > **Working offline?** Run `./tools/preflight.sh` while you still have wifi — it verifies
 > the venv, models, cache and every offline command end to end. See
