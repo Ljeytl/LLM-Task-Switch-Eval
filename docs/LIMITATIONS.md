@@ -164,6 +164,67 @@ raise misattribution sharply.
 
 ---
 
+## 5b. Misattribution tracks same-kind *pairs*, which this design cannot separate from task count
+
+This is the sharpest confound in the new arm, and it undercuts the obvious reading of the
+headline number.
+
+`tasks_for(n)` deals from `TASK_POOL = [SHOPPING, SCHEDULE]` round-robin, so the number of
+*same-kind pairs* — the only pairs between which misattribution is even possible, since
+the vocabularies of different kinds are disjoint — rises in lockstep with task count:
+
+| tasks | slots | same-kind pairs | misattribution events |
+|---:|---|---:|---:|
+| 1 | `shopping_0` | 0 | 0 |
+| 2 | `shopping_0, schedule_0` | 0 | 0 |
+| 3 | `+ shopping_1` | 1 | 8 |
+| 4 | `+ schedule_1` | 2 | 59 |
+
+Pair count and task count are perfectly collinear across the cells actually run. So the
+claim the data supports is **"misattribution requires a confusable neighbour,"** not
+"misattribution grows with the number of concurrent tasks." Those are different claims
+and I can only demonstrate the first. A 4-task conversation over four *distinct* kinds
+might show none at all.
+
+**The experiment that separates them is one config line, and it is now shipped.** The
+`same_kind_2` cell is `tasks: [shopping, shopping]` — two tasks, one same-kind pair —
+which breaks the collinearity:
+
+| cell | tasks | same-kind pairs |
+|---|---:|---:|
+| `len_medium` | 2 | 0 |
+| `same_kind_2` | 2 | **1** |
+| `tasks_3` | 3 | 1 |
+
+`len_medium` and `same_kind_2` hold task count fixed and vary pair count; `same_kind_2`
+and `tasks_3` hold pair count fixed and vary task count. Misattribution in `same_kind_2`
+means similarity is the driver and the count is incidental; none means the count matters
+in its own right.
+
+Making this expressible needed a real change, not just a config edit — cells were
+specified by *count* only, and the cell id `t{n}_o{ops}_n{noise}` could not tell
+`[shopping, schedule]` from `[shopping, shopping]` (D18). The library never assumed
+distinct kinds; `build_states`, `order_ops` and the scorer all key on slot, so the
+constraint was entirely in the CLI.
+
+### Interleaving is not the main cause of misattribution
+
+Splitting the events by ordering is deflationary in a way worth saying out loud:
+
+| cell | blocked | interleaved |
+|---|---:|---:|
+| 3 tasks | 2 events (1/25 convs) | 6 events (4/25 convs) |
+| 4 tasks | 25 events (11/25 convs) | 34 events (12/25 convs) |
+
+Misattribution is substantial in *blocked* ordering, where the two shopping lists are
+never interleaved with each other at all. Interleaving adds roughly a third on top. So the
+mechanism is mostly "two similar states in one context bleed together," with ordering as a
+secondary modulator — **not** "switching between them causes the bleed." The joint-accuracy
+delta remains a genuine ordering effect; the misattribution count largely is not, and
+reporting it as one would overclaim.
+
+---
+
 ## 6. Bit-exact reproducibility is not achievable
 
 Batch-invariant kernels do not exist on Metal, so identical inputs can produce slightly

@@ -17,7 +17,10 @@ from taskswitch.ops import TaskKind
 from taskswitch.runner import ACK, build_messages, resolve_model, run_conversation
 from taskswitch.scorer import score
 
-SEED, TASKS = 1001, [TaskKind.SHOPPING, TaskKind.SCHEDULE]
+# Three tasks, deliberately: two of them the SAME KIND. That is the configuration where
+# misattribution becomes possible at all, and it is what the v2 slot refactor unlocked.
+SEED = 1001
+TASKS = [TaskKind.SHOPPING, TaskKind.SCHEDULE, TaskKind.SHOPPING]
 MODEL = sys.argv[1] if len(sys.argv) > 1 else "qwen2.5-coder:7b"
 
 
@@ -51,9 +54,14 @@ code. Re-run it after any change to the generator or the schema.
 
 ## 1. The operation sample
 
-`sample_ops(seed={SEED}, tasks=[shopping, schedule], n_ops=6, n_false=2, n_noise=2)`
-emits a flat list of `Op` objects. This *same list* goes to two places: the renderer,
-which turns it into user turns, and the oracle, which computes the answer key.
+`sample_ops(seed={SEED}, tasks=[shopping, schedule, shopping], n_ops=6, n_false=2,
+n_noise=2)` emits a flat list of `Op` objects. This *same list* goes to two places: the
+renderer, which turns it into user turns, and the oracle, which computes the answer key.
+
+Note **two shopping slots**: `shopping_0` is the grocery list, `shopping_1` the hardware
+list. They are independent states drawing from disjoint vocabularies, which is what makes
+a grocery item appearing on the hardware list unmistakable — the property that lets the
+taxonomy detect misattribution at all.
 
 ```
 {fmt_ops(blocked)}
@@ -80,6 +88,10 @@ Same operations, same rendered strings, different sequence.
 {chr(10).join(f'  user: {t}' for t in inter.turns)}
   user: {inter.final_request}
 ```
+
+Every turn names its target list explicitly ("add milk to my **grocery list**"). With two
+lists of one kind an unnamed turn would be genuinely ambiguous, and an ambiguous turn
+makes the answer key *unanswerable* rather than merely hard.
 
 Between every pair of user turns the harness inserts a **prefilled** assistant turn,
 `"{ACK}"`, which the model never generated. That is what makes the two prompts the
@@ -142,7 +154,8 @@ Interleaved detail: `{si.failures or '[]'}`
 Each entry is `(bucket, "task:identity detail")`:
 
 - `dropped` — the operation never landed anywhere
-- `misattributed` — it landed in the *other* task's state
+- `misattributed` — it landed in *another* task's state. In v1 this never fired; it turns
+  out to require two tasks similar enough to confuse, which only the slot design can build
 - `absorbed … false_assert` — a planted counterfactual entered state
 - `absorbed … hallucination` — content that was never mentioned at all entered state
 - `dropped … wrong value` — the entity is present but its value is wrong (a meeting at

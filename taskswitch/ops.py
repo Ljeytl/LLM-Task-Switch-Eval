@@ -136,3 +136,29 @@ class Op:
     def mutating(self) -> bool:
         """True if this op is expected to change state. The negation of INERT_KINDS."""
         return self.kind not in INERT_KINDS
+
+#: Canonical kind pool, dealt round-robin to build the default composition of a cell.
+TASK_POOL: tuple[TaskKind, ...] = (TaskKind.SHOPPING, TaskKind.SCHEDULE)
+
+#: Two-letter codes used in cell ids. Both kinds start with "s", so first letters collide
+#: and the codes are spelled out.
+TASK_CODE: Mapping[TaskKind, str] = MappingProxyType({
+    TaskKind.SHOPPING: "sh",
+    TaskKind.SCHEDULE: "sc",
+})
+
+
+def default_tasks(n: int) -> list[TaskKind]:
+    """The canonical `n`-task composition: cycle `TASK_POOL`.
+
+    Lives in the library rather than in `run.py` because `Conversation.cell` needs it to
+    decide whether a composition is canonical, and therefore whether the cell id needs a
+    kind signature to stay unambiguous.
+    """
+    return [TASK_POOL[i % len(TASK_POOL)] for i in range(n)]
+
+
+def kind_signature(tasks: list[TaskKind]) -> str:
+    """`[SHOPPING, SHOPPING]` -> `"shsh"`. Order-sensitive, because order determines
+    which slot index each instance receives and therefore which vocabulary it draws."""
+    return "".join(TASK_CODE[t] for t in tasks)

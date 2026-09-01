@@ -25,7 +25,8 @@ from enum import Enum
 from random import Random
 from typing import Any
 
-from .ops import Op, OpKind, TaskKind, assign_slots, slot_key
+from .ops import (Op, OpKind, TaskKind, assign_slots, default_tasks, kind_signature,
+                  slot_key)
 from .state import ground_truth
 from .surface import render, render_final_request, system_prompt, vocabulary
 
@@ -52,8 +53,18 @@ class Conversation:
 
     @property
     def cell(self) -> str:
-        """Condition label used to group rows in analysis."""
-        return f"t{len(self.tasks)}_o{self.n_ops}_n{self.n_noise}"
+        """Condition label used to group rows in analysis.
+
+        A bare `t{n}` cannot distinguish `[shopping, schedule]` from
+        `[shopping, shopping]` -- both are two tasks, but only the second contains a
+        same-kind pair, which is the whole point of running it (LIMITATIONS.md 5b). A kind
+        signature is appended when, and only when, the composition departs from
+        `default_tasks(n)`, so every id produced before compositions were configurable is
+        unchanged and the committed results stay addressable.
+        """
+        n = len(self.tasks)
+        sig = "" if self.tasks == default_tasks(n) else kind_signature(self.tasks)
+        return f"t{n}{sig}_o{self.n_ops}_n{self.n_noise}"
 
 
 def approx_tokens(texts: list[str]) -> int:

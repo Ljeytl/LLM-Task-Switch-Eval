@@ -1,5 +1,47 @@
 # Changelog
 
+## v2.1 — separating confusability from task count
+
+### Added
+- **Explicit task compositions in config.** A cell may name its kinds
+  (`tasks: [shopping, shopping]`) rather than only a count. (D18)
+- **`same_kind_2` cell** — two tasks, one same-kind pair. Holds task count fixed against
+  `len_medium` and pair count fixed against `tasks_3`, which is what makes the two
+  separable at all.
+- **`tests/test_run.py`** — 34 tests on the CLI's own helpers, the layer that had none.
+  D14's lesson made concrete: 543 green tests once coexisted with an entry point that
+  crashed on its first task-count cell, because every test called `build_pair` directly.
+  Includes tests that every shipped config cell resolves, has a unique cell id, and pairs
+  without token drift. Suite is now 577.
+
+### Changed
+- **`Conversation.cell` appends a kind signature** when a composition departs from
+  `default_tasks(n)` — `[shopping, shopping]` is `t2shsh_o6_n40`. Canonical ids are
+  byte-identical to before, deliberately: signing unconditionally was simpler and would
+  have orphaned every committed result.
+- **Result rows record `tasks`, not just `n_tasks`.** `--rescore` rebuilt states from the
+  count and so assumed the canonical pool; on an explicit composition it would have graded
+  against the wrong states. Old rows fall back to the count.
+
+### Found
+- **The task-count result is confounded, and I nearly reported it as clean.** Same-kind
+  pairs run 0, 0, 1, 2 as tasks run 1..4 under the canonical pool — perfectly collinear
+  with task count across every cell run. Since kinds have disjoint vocabularies, a
+  same-kind pair is the only place misattribution can occur. So the data support
+  "misattribution needs a confusable neighbour", not "misattribution grows with task
+  count". (LIMITATIONS 5b)
+- **Interleaving is not the main cause of misattribution.** Splitting by ordering:
+  4 tasks is 25 events blocked vs 34 interleaved; 3 tasks is 2 vs 6. Substantial
+  misattribution occurs in *blocked* ordering, where the two shopping lists are never
+  interleaved with each other. Ordering modulates it by roughly a third; similarity
+  drives the rest. The joint-accuracy delta remains a genuine ordering effect — the
+  misattribution count largely is not.
+
+### Fixed
+- `cell.get("tasks", cell["n_tasks"])` evaluated its default eagerly and raised
+  `KeyError` on exactly the cells that supply `tasks` and no `n_tasks`. Caught by the new
+  entry-point tests in the same change.
+
 ## v2 — per-instance task identity
 
 ### Added

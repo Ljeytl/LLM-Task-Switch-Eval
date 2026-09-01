@@ -336,3 +336,48 @@ lesson applied before it could bite rather than after.
 **Cost, stated honestly.** v1 results are not reproducible from this code — every prompt
 changed, so token counts and cache keys all differ. They are preserved under
 `results/v1/` with their provenance rather than silently replaced.
+
+---
+
+### D18 — Cells specify a task *composition*, not just a task count
+
+**Date:** 2026-09-01
+
+**Context.** The v2 task-count arm produced its headline finding — misattribution rising
+0 → 8 → 59 across 2, 3 and 4 tasks — and I nearly reported it as a task-count effect.
+Checking the compositions first showed it is not cleanly one. `tasks_for(n)` deals from
+`[SHOPPING, SCHEDULE]` round-robin, so the count of *same-kind pairs* runs 0, 0, 1, 2 as
+n runs 1..4 — perfectly collinear with n across every cell in the sweep. Since kinds have
+disjoint vocabularies, a same-kind pair is the only place misattribution can occur at all.
+Task count and confusability were varying together and the design could not separate them.
+
+**Decision.** A config cell may name its kinds explicitly (`tasks: [shopping, shopping]`)
+instead of, or in place of, `n_tasks`. Added the `same_kind_2` cell to break the
+collinearity.
+
+**What this cost.** Three things had to change, none of them the config:
+
+1. `run.py:resolve_tasks` accepts a count or an explicit list; `cell_tasks` reads either
+   key off a cell.
+2. `Conversation.cell` had to distinguish compositions a bare `t{n}` cannot. A kind
+   signature is appended **only** when the composition differs from `default_tasks(n)`,
+   so `t2_o6_n40` and friends keep their exact ids and the committed results stay
+   addressable, while `[shopping, shopping]` becomes `t2shsh_o6_n40`. Signing every cell
+   unconditionally would have been simpler and would have orphaned every result on disk.
+3. Result rows now record `tasks` (the kinds), not just `n_tasks`. `--rescore` rebuilt
+   the state machines from `tasks_for(row["n_tasks"])`, which silently assumes the
+   canonical pool; on any explicit composition it would have graded against the wrong
+   states. Old rows fall back to the count.
+
+**Rejected: adding more task kinds instead.** Four distinct kinds would also break the
+collinearity, and more directly. It needs a third and fourth state machine, vocabulary and
+template set — roughly the same work as the original two — and it would answer a *different*
+question (does confusability matter?) less sharply than the one-line same-kind cell answers
+this one (is confusability what is actually driving the number I am about to report?).
+
+**What it revealed immediately.** `cell.get("tasks", cell["n_tasks"])` evaluates its
+default eagerly, so it raised `KeyError` on precisely the cells that supply `tasks` and no
+`n_tasks` — every cell the feature exists for. Caught by `tests/test_run.py`, which was
+written in the same change and which exists because of D14's lesson: the entry point had
+no test coverage at all, and 543 green tests once coexisted with a CLI that crashed on its
+first task-count cell.

@@ -9,21 +9,26 @@ code. Re-run it after any change to the generator or the schema.
 
 ## 1. The operation sample
 
-`sample_ops(seed=1001, tasks=[shopping, schedule], n_ops=6, n_false=2, n_noise=2)`
-emits a flat list of `Op` objects. This *same list* goes to two places: the renderer,
-which turns it into user turns, and the oracle, which computes the answer key.
+`sample_ops(seed=1001, tasks=[shopping, schedule, shopping], n_ops=6, n_false=2,
+n_noise=2)` emits a flat list of `Op` objects. This *same list* goes to two places: the
+renderer, which turns it into user turns, and the oracle, which computes the answer key.
+
+Note **two shopping slots**: `shopping_0` is the grocery list, `shopping_1` the hardware
+list. They are independent states drawing from disjoint vocabularies, which is what makes
+a grocery item appearing on the hardware list unmistakable — the property that lets the
+taxonomy detect misattribution at all.
 
 ```
-   0. shopping  add           {"item": "tomatoes"}
-   1. shopping  add           {"item": "eggs"}
-   2. shopping  noise         {}
-   3. shopping  query         {"item": "eggs"}
-   4. shopping  false_assert  {"item": "bread"}
-   5. schedule  add           {"title": "budget sync", "time": "13:30"}
-   6. schedule  add           {"title": "postmortem", "time": "09:00"}
-   7. schedule  add           {"title": "demo", "time": "14:00"}
-   8. schedule  false_assert  {"title": "planning", "time": "08:30"}
-   9. schedule  noise         {}
+   0. shopping_0  false_assert  {"item": "butter"}
+   1. shopping_0  query         {"item": "eggs"}
+   2. shopping_0  noise         {}
+   3. shopping_0  query         {"item": "eggs"}
+   4. schedule_0  add           {"title": "onboarding", "time": "18:30"}
+   5. schedule_0  false_assert  {"title": "retro", "time": "14:00"}
+   6. schedule_0  add           {"title": "planning", "time": "16:00"}
+   7. schedule_0  noise         {}
+   8. shopping_1  query         {"item": "picture hooks"}
+   9. shopping_1  add           {"item": "picture hooks"}
 ```
 
 Note ops of kind `noise` and `false_assert`. Neither advances state — `noise` is
@@ -34,37 +39,41 @@ topical padding and the length lever, `false_assert` is a counterfactual the mod
 
 Same operations, same rendered strings, different sequence.
 
-**Blocked** — task order `shop shop shop shop shop sche sche sche sche sche`
+**Blocked** — task order `shop shop shop shop sche sche sche sche shop shop`
 
 ```
-  user: Can you put tomatoes on the list?
-  user: I need to pick up eggs — add it.
-  user: The shop near me reorganised all its aisles last week.
-  user: Have I got eggs on the list?
-  user: I nearly put bread on the list and then changed my mind.
-  user: Add a 13:30 slot for budget sync.
-  user: I need postmortem on the schedule at 09:00.
-  user: Put demo in my calendar for 14:00.
-  user: I considered booking planning at 08:30, but I won't.
-  user: Meetings always seem to cluster on the same day.
-  user: Now give me the current state of my shopping list and my meeting schedule. Report exactly what is on each one right now.
+  user: butter was suggested for the grocery list — I'm not adding it though.
+  user: Have I got eggs on the grocery list?
+  user: There was a huge queue at the checkout yesterday.
+  user: Quick check — does the grocery list include eggs?
+  user: Schedule onboarding at 18:30 on my work calendar.
+  user: There was talk of retro at 14:00 for the work calendar — it never happened.
+  user: Add a 16:00 slot for planning to the work calendar.
+  user: I switched to a new timezone setting last month.
+  user: Have I got picture hooks on the hardware list?
+  user: Add picture hooks to the hardware list, please.
+  user: Now give me the current state of my grocery list, my work calendar and my hardware list. Report exactly what is on each one right now.
 ```
 
-**Interleaved** — task order `shop sche shop sche shop sche shop sche shop sche`
+**Interleaved** — task order `shop sche shop shop sche shop shop sche shop sche`
 
 ```
-  user: Can you put tomatoes on the list?
-  user: Add a 13:30 slot for budget sync.
-  user: I need to pick up eggs — add it.
-  user: I need postmortem on the schedule at 09:00.
-  user: The shop near me reorganised all its aisles last week.
-  user: Put demo in my calendar for 14:00.
-  user: Have I got eggs on the list?
-  user: I considered booking planning at 08:30, but I won't.
-  user: I nearly put bread on the list and then changed my mind.
-  user: Meetings always seem to cluster on the same day.
-  user: Now give me the current state of my shopping list and my meeting schedule. Report exactly what is on each one right now.
+  user: butter was suggested for the grocery list — I'm not adding it though.
+  user: Schedule onboarding at 18:30 on my work calendar.
+  user: Have I got picture hooks on the hardware list?
+  user: Have I got eggs on the grocery list?
+  user: There was talk of retro at 14:00 for the work calendar — it never happened.
+  user: Add picture hooks to the hardware list, please.
+  user: There was a huge queue at the checkout yesterday.
+  user: Add a 16:00 slot for planning to the work calendar.
+  user: Quick check — does the grocery list include eggs?
+  user: I switched to a new timezone setting last month.
+  user: Now give me the current state of my grocery list, my work calendar and my hardware list. Report exactly what is on each one right now.
 ```
+
+Every turn names its target list explicitly ("add milk to my **grocery list**"). With two
+lists of one kind an unnamed turn would be genuinely ambiguous, and an ambiguous turn
+makes the answer key *unanswerable* rather than merely hard.
 
 Between every pair of user turns the harness inserts a **prefilled** assistant turn,
 `"Got it."`, which the model never generated. That is what makes the two prompts the
@@ -76,23 +85,19 @@ identical multiset of strings, and therefore identical in length.
 
 ```json
 {
-  "shopping": [
-    "eggs",
-    "tomatoes"
-  ],
-  "schedule": [
+  "shopping_0": [],
+  "schedule_0": [
     [
-      "09:00",
-      "postmortem"
+      "16:00",
+      "planning"
     ],
     [
-      "13:30",
-      "budget sync"
-    ],
-    [
-      "14:00",
-      "demo"
+      "18:30",
+      "onboarding"
     ]
+  ],
+  "shopping_1": [
+    "picture hooks"
   ]
 }
 ```
@@ -107,7 +112,7 @@ the final turn only.
 
 | | blocked | interleaved |
 |---|---|---|
-| prompt tokens | 328 | 328 |
+| prompt tokens | 349 | 349 |
 | turns | 10 | 10 |
 | messages sent | 22 | 22 |
 | parsed OK | True | True |
@@ -118,23 +123,21 @@ verified against Ollama's own count rather than estimated.
 Blocked response:
 ```json
 {
-  "shopping": [
-    "tomatoes",
+  "shopping_0": [
     "eggs"
   ],
-  "schedule": [
+  "schedule_0": [
     {
-      "time": "09:00",
-      "title": "postmortem"
+      "time": "18:30",
+      "title": "onboarding"
     },
     {
-      "time": "13:30",
-      "title": "budget sync"
-    },
-    {
-      "time": "14:00",
-      "title": "demo"
+      "time": "16:00",
+      "title": "planning"
     }
+  ],
+  "shopping_1": [
+    "picture hooks"
   ]
 }
 ```
@@ -142,23 +145,21 @@ Blocked response:
 Interleaved response:
 ```json
 {
-  "shopping": [
-    "tomatoes",
-    "eggs"
+  "shopping_0": [
+    "picture hooks"
   ],
-  "schedule": [
+  "schedule_0": [
     {
-      "time": "09:00",
-      "title": "postmortem"
+      "time": "18:30",
+      "title": "onboarding"
     },
     {
-      "time": "13:30",
-      "title": "budget sync"
-    },
-    {
-      "time": "14:00",
-      "title": "demo"
+      "time": "16:00",
+      "title": "planning"
     }
+  ],
+  "shopping_1": [
+    "picture hooks"
   ]
 }
 ```
@@ -169,13 +170,13 @@ Grading is a dict comparison, so there is nothing to argue about.
 
 | | blocked | interleaved |
 |---|---|---|
-| joint correct | True | True |
-| per task | {'shopping': True, 'schedule': True} | {'shopping': True, 'schedule': True} |
-| failures | [] | [] |
+| joint correct | False | False |
+| per task | {'shopping_0': False, 'schedule_0': True, 'shopping_1': True} | {'shopping_0': False, 'schedule_0': True, 'shopping_1': True} |
+| failures | ['absorbed'] | ['misattributed'] |
 
-Blocked detail: `[]`
+Blocked detail: `[(<Failure.ABSORBED: 'absorbed'>, 'shopping_0:eggs hallucination')]`
 
-Interleaved detail: `[]`
+Interleaved detail: `[(<Failure.MISATTRIBUTED: 'misattributed'>, 'shopping_0:picture hooks from other task')]`
 
 ---
 
@@ -184,7 +185,8 @@ Interleaved detail: `[]`
 Each entry is `(bucket, "task:identity detail")`:
 
 - `dropped` — the operation never landed anywhere
-- `misattributed` — it landed in the *other* task's state
+- `misattributed` — it landed in *another* task's state. In v1 this never fired; it turns
+  out to require two tasks similar enough to confuse, which only the slot design can build
 - `absorbed … false_assert` — a planted counterfactual entered state
 - `absorbed … hallucination` — content that was never mentioned at all entered state
 - `dropped … wrong value` — the entity is present but its value is wrong (a meeting at

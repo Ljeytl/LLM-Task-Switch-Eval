@@ -22,7 +22,7 @@ import yaml
 from tqdm import tqdm
 
 from taskswitch.generator import Ordering, build_pair
-from taskswitch.ops import TaskKind
+from taskswitch.ops import TaskKind, default_tasks
 from taskswitch.plots import dumbbell, taxonomy_bars
 from taskswitch.runner import ModelSpec, resolve_model, run_conversation, verify_token_match
 from taskswitch.scorer import score
@@ -30,7 +30,6 @@ from taskswitch.stats import (bonferroni, clustered_se, mcnemar, mcnemar_table, 
                               paired_bootstrap, wilson)
 
 RESULTS = Path("results")
-TASK_POOL = [TaskKind.SHOPPING, TaskKind.SCHEDULE]
 
 
 def tasks_for(n: int) -> list[TaskKind]:
@@ -46,7 +45,46 @@ def tasks_for(n: int) -> list[TaskKind]:
     boundary. `build_pair` enforces the real limit (how many distinct vocabularies
     exist), so no cap belongs here.
     """
-    return [TASK_POOL[i % len(TASK_POOL)] for i in range(n)]
+    return default_tasks(n)
+
+
+def resolve_tasks(spec: int | list[TaskKind] | list[str]) -> list[TaskKind]:
+    """Accept a task count or an explicit list of kind names.
+
+    An explicit list is what lets a cell hold task count fixed while varying how many
+    *same-kind pairs* the conversation contains. Those two move together under
+    `tasks_for` (LIMITATIONS.md 5b), so with counts alone the misattribution result
+    cannot be attributed to either one.
+    """
+    if isinstance(spec, int):
+        return tasks_for(spec)
+    out = []
+    for item in spec:
+        if isinstance(item, TaskKind):
+            out.append(item)
+            continue
+        try:
+            out.append(TaskKind(str(item).strip().lower()))
+        except ValueError:
+            legal = ", ".join(t.value for t in TaskKind)
+            raise SystemExit(f"unknown task kind {item!r}; legal kinds: {legal}") from None
+    if not out:
+        raise SystemExit("a cell's `tasks` list may not be empty")
+    return out
+
+
+def cell_tasks(cell: dict) -> list[TaskKind]:
+    """The composition a config cell asks for: an explicit `tasks` list, else `n_tasks`.
+
+    Written as an explicit branch rather than `cell.get("tasks", cell["n_tasks"])`,
+    which evaluates its default eagerly and raises KeyError on exactly the cells that
+    supply `tasks` instead of `n_tasks` -- that is, on every cell this feature exists for.
+    """
+    if "tasks" in cell:
+        return resolve_tasks(cell["tasks"])
+    if "n_tasks" not in cell:
+        raise SystemExit(f"cell {cell.get('label', cell)!r} needs `tasks` or `n_tasks`")
+    return resolve_tasks(cell["n_tasks"])
 
 
 def row_of(res, sc, cell_extra: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -54,7 +92,12 @@ def row_of(res, sc, cell_extra: dict[str, Any] | None = None) -> dict[str, Any]:
     return {
         "seed": c.seed, "model": res.model.name, "digest": res.model.digest,
         "ordering": c.ordering.value, "cell": c.cell,
-        "n_tasks": len(c.tasks), "n_ops": c.n_ops, "n_noise": c.n_noise,
+        "n_tasks": len(c.tasks),
+        # The kinds themselves, not just how many. --rescore rebuilds states from this;
+        # inferring them from n_tasks silently assumed the canonical alternating pool and
+        # would mis-score any cell with an explicit composition.
+        "tasks": [t.value for t in c.tasks],
+        "n_ops": c.n_ops, "n_noise": c.n_noise,
         "n_false": c.n_false, "n_turns": len(c.turns),
         "joint_correct": sc.joint_correct,
         "per_task_correct": sc.per_task_correct,
@@ -72,11 +115,15 @@ def row_of(res, sc, cell_extra: dict[str, Any] | None = None) -> dict[str, Any]:
     }
 
 
-def run_cell(model: ModelSpec, n_tasks: int, n_ops: int, n_noise: int, n_false: int,
-             n_pairs: int, seed0: int, constrained: bool = True,
+def run_cell(model: ModelSpec, tasks_spec: int | list, n_ops: int, n_noise: int,
+             n_false: int, n_pairs: int, seed0: int, constrained: bool = True,
              desc: str = "", extract: bool = False) -> tuple[list[dict], dict]:
-    """Run one condition and return (rows, token-match diagnostics)."""
-    tasks = tasks_for(n_tasks)
+    """Run one condition and return (rows, token-match diagnostics).
+
+    `tasks_spec` is either a count (canonical composition) or an explicit list of kinds.
+    """
+    tasks = resolve_tasks(tasks_spec)
+    n_tasks = len(tasks)
     rows, drift = [], []
     for k in tqdm(range(n_pairs), desc=desc or f"t{n_tasks} o{n_ops} n{n_noise}",
                   leave=False, file=sys.stderr):
@@ -197,7 +244,8 @@ def cmd_sweep(args) -> None:
         print(f"\n=== {model.name} (digest {model.digest or '?'}) ===")
         for cell in cfg["cells"]:
             rows, diag = run_cell(
-                model, cell["n_tasks"], cell["n_ops"], cell["n_noise"],
+                model, cell_tasks(cell),
+                cell["n_ops"], cell["n_noise"],
                 cfg.get("n_false", 3), cfg["n_pairs"], seed0=cfg.get("seed0", 1),
                 desc=f"{mname} {cell['label']}")
             for r in rows:
@@ -290,7 +338,8 @@ def cmd_rescore(args) -> None:
     models = {name: resolve_model(name) for name in {r["model"] for r in rows}}
     out = []
     for r in tqdm(rows, desc="rescore", file=sys.stderr):
-        tasks = tasks_for(r["n_tasks"])
+        # Prefer the recorded composition; fall back for rows written before it existed.
+        tasks = resolve_tasks(r.get("tasks") or r["n_tasks"])
         pair = build_pair(r["seed"], tasks, r["n_ops"], r["n_false"], r["n_noise"])
         conv = pair[0] if r["ordering"] == "blocked" else pair[1]
         res = run_conversation(conv, models[r["model"]], r.get("constrained", True))
