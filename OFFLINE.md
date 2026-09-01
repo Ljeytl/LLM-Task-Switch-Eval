@@ -60,6 +60,12 @@ just has to re-run inference.
 All documentation is plain Markdown in this repo — no site build, no external assets.
 Start with `README.md`, then:
 
+> **Two result generations.** `results/` holds the current (v2) sweep; `results/v1/`
+> archives the first complete sweep, taken before task identity was refactored to
+> per-instance slots. v1 numbers are real but **not reproducible from this code** —
+> every prompt changed. `results/v1/README.md` explains the provenance and why the
+> comparison is still worth having.
+
 | you want to | read |
 |---|---|
 | understand the idea | `docs/DESIGN.md` |
@@ -71,6 +77,7 @@ Start with `README.md`, then:
 | know what is broken | `docs/LIMITATIONS.md` |
 | prepare for the walkthrough | `docs/TALK.md` |
 | see the numbers | `results/RESULTS.md`, `results/POWER.md` |
+| see the v1 numbers and why they differ | `results/v1/README.md` |
 
 Citation links in the docs point at arxiv and will not resolve offline. Everything else
 is local.

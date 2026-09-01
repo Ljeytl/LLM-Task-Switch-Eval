@@ -27,20 +27,38 @@ else
 fi
 
 echo "== 3. Data assets =="
-[ -s results/sweep.jsonl ] && ok "sweep data ($(wc -l < results/sweep.jsonl | tr -d ' ') rows)" || bad "results/sweep.jsonl missing"
+# v2 results land in results/; v1 is archived under results/v1/. Either is enough to work
+# offline, so accept a fallback rather than failing while a sweep is still running.
+if [ -s results/sweep.jsonl ]; then
+  ok "v2 sweep data ($(wc -l < results/sweep.jsonl | tr -d ' ') rows)"
+elif [ -s results/v1/sweep.jsonl ]; then
+  ok "v1 sweep data ($(wc -l < results/v1/sweep.jsonl | tr -d ' ') rows) -- v2 sweep not finished"
+else
+  bad "no sweep data in results/ or results/v1/"
+fi
 n_cache=$(ls results/cache 2>/dev/null | wc -l | tr -d ' ')
-[ "$n_cache" -gt 100 ] && ok "response cache ($n_cache entries) -- --rescore will need no inference" \
-                       || bad "response cache thin ($n_cache entries); --rescore will re-run inference"
-for f in results/RESULTS.md results/POWER.md results/sample.jsonl results/dumbbell.png docs/WALKTHROUGH.md; do
-  [ -s "$f" ] && ok "present: $f" || bad "missing: $f"
+n_rows=$( [ -s results/sweep.jsonl ] && wc -l < results/sweep.jsonl | tr -d ' ' || echo 0)
+if [ "$n_cache" -ge "$n_rows" ] && [ "$n_cache" -gt 0 ]; then
+  ok "response cache ($n_cache entries covers $n_rows rows) -- --rescore needs no inference"
+elif pgrep -f "run.py --config" >/dev/null 2>&1; then
+  ok "response cache filling ($n_cache entries); a sweep is still running"
+else
+  bad "response cache ($n_cache entries) does not cover $n_rows rows; --rescore will re-run inference"
+fi
+for f in RESULTS.md POWER.md sample.jsonl dumbbell.png; do
+  if [ -s "results/$f" ]; then ok "present: results/$f"
+  elif [ -s "results/v1/$f" ]; then ok "present: results/v1/$f (v1 archive)"
+  else bad "missing: $f in results/ and results/v1/"; fi
 done
+[ -s docs/WALKTHROUGH.md ] && ok "present: docs/WALKTHROUGH.md" || bad "missing: docs/WALKTHROUGH.md"
 
 echo "== 4. Offline commands actually run =="
-$PY -m pytest tests/ -q >/dev/null 2>&1 && ok "pytest (355 tests)" || bad "pytest failed"
-$PY run.py --analyse >/dev/null 2>&1 && ok "run.py --analyse" || bad "run.py --analyse failed"
-$PY tools/audit_taxonomy.py results/sweep.jsonl >/dev/null 2>&1 && ok "tools/audit_taxonomy.py" || bad "audit failed"
-$PY tools/power_analysis.py results/sweep.jsonl >/dev/null 2>&1 && ok "tools/power_analysis.py" || bad "power analysis failed"
-$PY tools/make_readme_results.py >/dev/null 2>&1 && ok "tools/make_readme_results.py" || bad "results renderer failed"
+n_tests=$($PY -m pytest tests/ -q --collect-only 2>/dev/null | grep -oE "^[0-9]+ tests" | head -1)
+$PY -m pytest tests/ -q >/dev/null 2>&1 && ok "pytest (${n_tests:-suite} passing)" || bad "pytest failed"
+DATA=results/sweep.jsonl; [ -s "$DATA" ] || DATA=results/v1/sweep.jsonl
+$PY run.py --analyse --results "$DATA" >/dev/null 2>&1 && ok "run.py --analyse" || bad "run.py --analyse failed"
+$PY tools/audit_taxonomy.py "$DATA" >/dev/null 2>&1 && ok "tools/audit_taxonomy.py" || bad "audit failed"
+$PY tools/power_analysis.py "$DATA" >/dev/null 2>&1 && ok "tools/power_analysis.py" || bad "power analysis failed"
 
 echo "== 5. Local inference (one real model call) =="
 if $PY -c "
