@@ -126,6 +126,16 @@ Any accuracy delta is switch and re-entry cost.
 See [`docs/WALKTHROUGH.md`](docs/WALKTHROUGH.md) for one conversation traced end to end,
 generated from real output.
 
+### Sequential related bugs (`bugqueue`)
+
+Models piling defect reports before fixes land vs report-fix pacing on one module
+(`checkout.py`). See [`docs/BUGQUEUE.md`](docs/BUGQUEUE.md).
+
+```bash
+.venv/bin/python -m pytest tests/test_bugqueue.py -q
+.venv/bin/python run_bugs.py --demo
+```
+
 > **Working offline?** Run `./tools/preflight.sh` while you still have wifi — it verifies
 > the venv, models, cache and every offline command end to end. See
 > [`OFFLINE.md`](OFFLINE.md).
@@ -137,7 +147,7 @@ uv venv --python 3.12 .venv          # 3.14 has thin scipy/matplotlib wheel cove
 uv pip install --python .venv/bin/python -e ".[dev]"
 ollama pull qwen2.5-coder:7b
 
-.venv/bin/python -m pytest tests/ -q   # 538 tests, no model required
+.venv/bin/python -m pytest tests/ -q   # 597 tests, no model required
 .venv/bin/python run.py --demo         # 5 pairs, ~2 min
 ```
 

@@ -17,7 +17,7 @@ end to end. If it prints `ALL CHECKS PASSED`, you are good to fly.
 
 | command | needs network? | notes |
 |---|---|---|
-| `.venv/bin/python -m pytest tests/ -q` | no | 355 tests, no model required |
+| `.venv/bin/python -m pytest tests/ -q` | no | 597 tests, no model required |
 | `.venv/bin/python run.py --analyse` | no | pure stats + plots over `results/sweep.jsonl` |
 | `.venv/bin/python run.py --rescore` | no | re-scores from the response cache, zero inference |
 | `.venv/bin/python tools/audit_taxonomy.py` | no | pure data |
@@ -75,7 +75,7 @@ Start with `README.md`, then:
 | defend the statistics | `docs/STATS.md` |
 | answer "why not X?" | `docs/DECISIONS.md` |
 | know what is broken | `docs/LIMITATIONS.md` |
-| prepare for the walkthrough | `docs/TALK.md` |
+| prepare for the walkthrough | `prep/TALK.md` (local, not in git) |
 | see the numbers | `results/RESULTS.md`, `results/POWER.md` |
 | see the v1 numbers and why they differ | `results/v1/README.md` |
 
@@ -96,5 +96,4 @@ In rough order of payoff, and all of it runs on this machine:
    inter-rater agreement number, which the project currently does not have.
 3. **Nested noise pools** (`LIMITATIONS.md` §4b). Roughly ten lines in
    `generator._subrng`; makes the length arm properly nested. Needs a full re-run.
-4. **Read `docs/TALK.md` and argue with it.** It is the walkthrough spine plus written
-   answers to the questions the brief says will be asked.
+4. **Read `prep/TALK.md` and argue with it** (local, gitignored).

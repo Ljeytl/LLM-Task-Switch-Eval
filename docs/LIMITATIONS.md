@@ -432,3 +432,12 @@ that overlapped, and should not be read as a throughput measurement.
 Clean per-model timings are the ones recorded separately during the pre-flight
 benchmark: prefill ~274-348 tok/s and generation ~16-21 tok/s on `qwen2.5-coder:7b`,
 measured with nothing else on the GPU.
+
+---
+
+## 12. `bugqueue` is not token-matched
+
+The sequential-defect track compares accumulate (pile reports) vs ticket (report-fix
+pacing). REPORT and FIX turns differ, so unlike `taskswitch` the orderings are not the
+identical multiset of tokens. It does not execute code — symbol values stand in for
+function return values.

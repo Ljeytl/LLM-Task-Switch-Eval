@@ -8,6 +8,12 @@ results/demo.jsonl
 files_unzipped/
 *.zip
 .pytest_cache/
-# The interview brief is the company's document, not mine to redistribute.
+# Labelbox "Build Something" brief — company doc, not for redistribution.
 *.pdf
+Build Something*.pdf
+# Private prep: walkthrough script, timing, question bank.
+prep/
+results/cache/bugs/
+results/bugs_sweep.jsonl
+results/bugs_demo.jsonl
 taskswitch.egg-info/
