@@ -35,6 +35,30 @@ answers the criticism levelled at the closest prior work: rather than holding le
 constant *or* confounding it with interleaving, this varies length while the
 interleaving contrast is made independently inside each cell.
 
+### What the task-count arm actually asks
+
+`n_ops` is **total per conversation** (D4), so fewer tasks means *more operations per
+task*: the 1-task control puts all six ops on one list, the 2-task cell puts three on
+each, the 4-task cell puts one or two on each.
+
+That is a deliberate trade and it must be stated precisely, because it changes the claim:
+
+> The arm does **not** answer "does adding another task hurt?"
+> It answers "**at fixed total work and fixed token count, does splitting that work
+> across more live states cost you?**"
+
+The second is the more useful question for someone sizing an assistant — real budgets are
+in tokens, not tasks — but it is a different claim and only it is supported here.
+
+It also explains a result that looks backwards at first glance: the 1-task control scores
+*below* the 2-task cell (0.320 vs 0.640 on `qwen2.5-coder:7b`). The control is not an
+easier condition; it is a single list six items long instead of two lists three items
+long.
+
+The alternative — holding ops *per task* constant — would make a 4-task conversation
+twice the length of a 2-task one and re-confound task count with context length, which is
+exactly the error D4 fixed. No design avoids both; this one names which it accepts.
+
 ### The task-count arm, cut in v1 and restored in v2
 
 v1 could not run it. Task identity was `TaskKind` and only two kinds existed, so "3

@@ -66,13 +66,26 @@ of the design.
 
 **The v2 refactor invalidated the calibration a second time.** `n_ops = 6` was measured
 against v1 templates. v2 names the target list in every turn ("add milk to my grocery
-list"), which lengthens each turn and the system prompt, and the same conditions came
-back materially harder — the single-task control fell from 0.600 to 0.320. The design
-still measures (nothing is on the floor), and the control still reads exactly +0.0pp, but
-the cells sit below the band they were calibrated for. Re-running `--calibrate` against
-the current templates before the next sweep is the fix, and it is the same mistake as the
-one below in a different costume: calibrating one thing, then changing another underneath
-it.
+list"), lengthening every turn and the system prompt, and it also nested the noise pools —
+so two things changed at once.
+
+Difficulty moved **non-uniformly**, which is the part that matters:
+
+| cell | v1 blocked | v2 blocked |
+|---|---:|---:|
+| `ctrl_1task` | 0.600 | 0.320 |
+| `len_short` | 0.900 | 0.840 |
+| `len_medium` | 0.467 | 0.640 |
+
+The control got harder; the primary got *easier* and moved into the 0.6–0.8 band it was
+supposed to be in. So "v2 is harder" — which is what the control alone suggested — is
+wrong, and any single-cell read of this table would have been wrong too.
+
+Nothing here is attributable, because template wording and noise nesting changed together
+and v1 cannot be re-run under v2 code. What it does establish is that the calibration does
+not transfer across a change of this size. Re-running `--calibrate` against the current
+templates before the next sweep is the fix, and this is the same mistake as the one below
+in a different costume: calibrating one thing, then changing another underneath it.
 
 **The original methodological error, kept because the pattern repeated.** `run.py --calibrate` sweeps
 `n_ops` at `n_noise = 0`, and I picked `n_ops = 6` from that curve. But difficulty is
@@ -117,6 +130,21 @@ walked one shared RNG in list order (which changed paraphrases for everything af
 inserted turn). Both are covered by
 `test_noise_conditions_are_nested_not_independent_draws` and
 `test_mutating_stream_is_invariant_to_noise_level`.
+
+---
+
+## 4c. Task count and operations-per-task move inversely
+
+`n_ops` is total per conversation, so raising the task count *lowers* the operations per
+task. A reader who takes the task-count arm as "adding a task costs X" will be wrong; it
+measures splitting a fixed amount of work across more live states, at a fixed token
+count.
+
+Visible in the data as the 1-task control scoring below the 2-task cell (0.320 vs 0.640):
+the control is one six-item list, not a simpler condition.
+
+Holding ops-per-task constant instead would re-confound task count with conversation
+length (the D4 error). Both cannot be held at once, and this design says which it gave up.
 
 ---
 

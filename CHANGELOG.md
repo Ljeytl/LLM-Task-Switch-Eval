@@ -25,9 +25,14 @@
 - `parsed` is now a plain slot-keyed dict; `FinalState` cannot express N slots.
 
 ### Known
-- **The calibration is stale.** `n_ops = 6` was measured on v1 templates; v2 turns are
-  longer and the conditions came back harder (control 0.600 → 0.320). Re-calibrate before
-  the next sweep. See LIMITATIONS 4.
+- **The calibration is stale.** `n_ops = 6` was measured on v1 templates. v2 difficulty
+  moved non-uniformly -- the control got harder (0.600 -> 0.320) while the primary got
+  easier (0.467 -> 0.640) and landed in the intended band. Template wording and noise
+  nesting changed together, so nothing is attributable. Re-calibrate before the next
+  sweep. See LIMITATIONS 4.
+- **Task count and ops-per-task move inversely**, since `n_ops` is total. The arm measures
+  splitting fixed work across more states, not the cost of adding a state. See
+  LIMITATIONS 4c.
 - v1 results are not reproducible from v2 code and are archived under `results/v1/` with
   their provenance.
 
