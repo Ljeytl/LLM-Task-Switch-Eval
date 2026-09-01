@@ -79,7 +79,7 @@ Start with `README.md`, then:
 | defend the statistics | `docs/STATS.md` |
 | answer "why not X?" | `docs/DECISIONS.md` |
 | know what is broken | `docs/LIMITATIONS.md` |
-| prepare for the walkthrough | `docs/TALK.md` |
+| prepare for the walkthrough | `prep/TALK.md` (local, not in git) |
 | see the numbers | `results/RESULTS.md`, `results/POWER.md` |
 | see the v1 numbers and why they differ | `results/v1/README.md` |
 
@@ -98,5 +98,4 @@ In rough order of payoff, and all of it runs on this machine:
    inter-rater agreement number, which the project currently does not have.
 3. **Clean the ambiguous imperative templates and rerun.** Phrases such as “Stick X”
    can make the verb look like part of the entity, creating instrument errors.
-4. **Read `docs/TALK.md` and argue with it.** It is the walkthrough spine plus written
-   answers to the questions the brief says will be asked.
+4. **Read `prep/TALK.md` and argue with it** (local, gitignored).

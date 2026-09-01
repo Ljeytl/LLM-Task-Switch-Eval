@@ -209,9 +209,10 @@ identical seeds): `qwen2.5-coder:7b` falls **0.840 → 0.640 → 0.560**, while 
 *rises* **0.800 → 0.880 → 0.960**. Padding costs one model 28 points and gains the other
 16. I originally wrote this up as a general finding about context padding from the qwen
 data alone, before gemma had run; it is not general, and the v2 data make the sign
-disagreement sharper than v1 did. Note what this does to the length arm: "no length
-effect" is a statement about the *ordering delta*, not about difficulty — length moves
-accuracy a great deal, just not the gap between orderings.
+disagreement sharper than v1 did. The qwen ordering-delta point estimates are nearly flat
+across the length arm (−16, −12, −12 points), while gemma's change direction (+8, +8,
+−12). With n=25 and no formal trend test, neither pattern establishes how context length
+changes the ordering effect.
 
 ### What actually went wrong in v1
 
