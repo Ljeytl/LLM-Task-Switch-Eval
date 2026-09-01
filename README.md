@@ -37,14 +37,27 @@ conversation and misattribution appears immediately — 8 events in 50 conversat
 every one of them a grocery item landing on the hardware list, versus **0 in 300**
 two-task conversations. *The v1 zero was a property of the instrument, not of the model.*
 
-**What we found.** Across 480 conversations at *exactly* matched token counts (480/480
+**What we found.** Across 600 conversations at *exactly* matched token counts (600/600
 verified, zero drift), the **pre-registered primary comparison found no detectable switch
-cost** — and at n=30 it had no power to (§9). What the exploratory cells show is that
-switch cost is **model-specific rather than inevitable**: `qwen2.5-coder:7b` loses up to
-33 points to interleaving alone (p=0.013), while `gemma4:12b` shows no detectable cost in
-any condition. The mechanism is not what the design predicted. **Misattribution — the
-failure the whole taxonomy was built around — never happened once.** What interleaving
-increases is the model treating explicitly-negated statements as real operations.
+cost** — −12.0pp at p=0.508 — and at n=25 per cell it had little power to (§9). The
+exploratory cells are where the structure is, and it is a **dissociation**: switch cost
+tracks the number of live states and is flat in context length.
+
+| arm | `qwen2.5-coder:7b` | `gemma4:12b` |
+|---|---|---|
+| length (0 / 40 / 120 noise turns) | −16 / −12 / −12 pp | +8 / +8 / −12 pp |
+| task count (2 / 3 / 4 tasks) | −12 / −20 / **−28** pp | +8 / −4 / −8 pp |
+
+Both models degrade monotonically as live states are added, and neither shows a length
+trend. The magnitude is strongly model-specific — qwen loses 28 points at four tasks
+(p=0.039), gemma 8 — so this is a shape both models share, not a constant.
+
+**Read the task-count arm with its confound attached.** Under the canonical composition
+the number of *same-kind pairs* rises in lockstep with task count, and a same-kind pair is
+the only place a misattribution can occur. The `same_kind_2` cell exists to separate them
+(§5b). Splitting the events by ordering is deflationary too: most misattribution happens
+in **blocked** ordering, where same-kind lists never interleave. Interleaving costs
+accuracy; similarity costs attribution; the task-count cells vary both at once.
 
 ![switch cost](results/dumbbell.png)
 
@@ -148,11 +161,13 @@ analysis in [`results/POWER.md`](results/POWER.md).
 Three things to read carefully:
 
 **The primary is null, and I am reporting it as the primary.** `len_medium` came back at
-−3.3pp, p=1.00. Its discordant counts were b=6, c=5 — interleaving broke six
-conversations and fixed five. That is not "ordering did not matter"; it is two effects
-cancelling in a sample with ~20% power (see [POWER.md](results/POWER.md)). Promoting
-`len_long` to the headline because it reached p=0.013 is precisely what pre-registration
-exists to prevent.
+−12.0pp, p=0.508. Its discordant counts were b=6, c=3 — interleaving broke six
+conversations and fixed three, and nine discordant pairs cannot separate a real 12-point
+effect from noise. A 12-point point estimate with a CI spanning [−36, +12] is not evidence
+of an effect and not evidence of its absence; it is an underpowered cell
+(see [POWER.md](results/POWER.md)). `tasks_4` reached p=0.039, and promoting it to the
+headline for that reason is precisely what pre-registration exists to prevent — so it is
+reported below as exploratory, with its confound attached.
 
 **Ordering-stability differs sharply between models.** Discordance — the share of
 conversations whose outcome *changed* with ordering — runs 27–47% for
@@ -161,10 +176,15 @@ accuracy deltas, and only a paired design can see it. Caveat in force: the two m
 differ in family, instruction tuning and size simultaneously, so this is **descriptive,
 not evidence about scale**.
 
-**Noise sensitivity is a property of the model, not the task.** The same 40 padding
-turns, on the same seeds, cost `qwen2.5-coder:7b` 43 points of accuracy (0.90 → 0.47)
-and cost `gemma4:12b` nothing (0.90 → 0.97). I initially wrote this up as a general
-finding about context padding from the qwen data alone; it is not general.
+**Noise sensitivity is a property of the model, not the task, and the two models move in
+opposite directions.** Blocked accuracy across the length arm (0 → 40 → 120 padding turns,
+identical seeds): `qwen2.5-coder:7b` falls **0.840 → 0.640 → 0.560**, while `gemma4:12b`
+*rises* **0.800 → 0.880 → 0.960**. Padding costs one model 28 points and gains the other
+16. I originally wrote this up as a general finding about context padding from the qwen
+data alone, before gemma had run; it is not general, and the v2 data make the sign
+disagreement sharper than v1 did. Note what this does to the length arm: "no length
+effect" is a statement about the *ordering delta*, not about difficulty — length moves
+accuracy a great deal, just not the gap between orderings.
 
 ### What actually goes wrong
 
