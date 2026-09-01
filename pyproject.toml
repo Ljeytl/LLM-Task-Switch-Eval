@@ -1,0 +1,22 @@
+[project]
+name = "taskswitch"
+version = "0.1.0"
+description = "Measuring the accuracy cost of interleaving concurrent stateful tasks, at matched token counts"
+requires-python = ">=3.10"
+dependencies = [
+    "ollama", "pydantic", "numpy", "scipy", "matplotlib", "pyyaml", "tqdm",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["taskswitch"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = ["ignore::UserWarning"]

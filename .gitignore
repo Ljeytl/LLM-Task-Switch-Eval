@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+results/cache/
+results/sweep.jsonl
+results/demo.jsonl
+.pytest_cache/
+files_unzipped/
+*.zip
+.pytest_cache/
+# The interview brief is the company's document, not mine to redistribute.
+*.pdf
+taskswitch.egg-info/
