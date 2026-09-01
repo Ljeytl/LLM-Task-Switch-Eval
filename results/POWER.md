@@ -26,12 +26,12 @@ Mean discordance across non-control cells: **23%**
 
 Simulated, exact McNemar, alpha = 0.05, discordance 23%, 400 replicates per cell.
 
-| true effect | n=30 | n=60 | n=120 | n=240 | n=480 |
+| true effect | n=25 | n=50 | n=100 | n=200 | n=400 |
 |---|---:|---:|---:|---:|---:|
-| 6.8 pp | 5% | 14% | 25% | 56% | 88% |
-| 11.3 pp | 14% | 32% | 70% | 95% | 100% |
-| 15.9 pp | 28% | 71% | 96% | 100% | 100% |
+| 6.8 pp | 3% | 12% | 20% | 48% | 76% |
+| 11.3 pp | 9% | 28% | 59% | 92% | 100% |
+| 15.9 pp | 16% | 57% | 94% | 100% | 100% |
 
-**Read this before reading any null in the results.** At n=30 this design has
-roughly 15% power against a 12-point effect. A non-significant cell is evidence
+**Read this before reading any null in the results.** At the n=25 per cell this sweep actually ran, the design has
+roughly 9% power against an 11-point effect. A non-significant cell is evidence
 of insufficient sample, not evidence of no effect.

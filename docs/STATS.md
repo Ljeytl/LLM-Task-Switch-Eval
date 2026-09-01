@@ -178,11 +178,16 @@ power is driven almost entirely by the discordant count, since concordant pairs 
 information about ordering. Assuming a discordance rate would be guessing at exactly the
 quantity the answer depends on.
 
-The result (`results/POWER.md`) is that n=30 per cell has roughly 6% power against an
-8-point effect and 20% against a 14-point one. **Every null in this project should be
-read through that table**, and the write-up says so rather than letting a
-non-significant p-value imply an absence of effect.
+The result (`results/POWER.md`) is that **n=25** per cell — the sweep's actual size — has
+roughly 3% power against a 7-point effect and 9% against an 11-point one. **Every null in
+this project should be read through that table**, and the write-up says so rather than
+letting a non-significant p-value imply an absence of effect.
 
-This also explains the shape of the primary cell's null: b=6, c=5. The design did detect
-interleaving changing outcomes on eleven of thirty conversations — it simply changed
+This also explains the shape of the primary cell's null: b=6, c=3. The design did detect
+interleaving changing outcomes on nine of twenty-five conversations — it simply changed
 them in both directions in a sample too small to resolve the imbalance.
+
+The grid used to open at n=30, which no cell ran. A power table whose smallest column is
+larger than the study it qualifies overstates that study, and the fix was to derive both
+the grid's first column and the summary sentence from the data rather than write them by
+hand.

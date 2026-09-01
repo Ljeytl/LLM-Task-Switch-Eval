@@ -359,25 +359,37 @@ measured on one condition rather than all of them.
 ## 9. Statistical power — the sweep is badly underpowered, and here is by how much
 
 This is not a hedge; it is simulated from the discordance actually observed
-(`tools/power_analysis.py`, output in `results/POWER.md`). At the sweep's n=30 pairs per
-cell, exact McNemar at alpha=0.05 with the observed 27% discordance rate:
+(`tools/power_analysis.py`, output in `results/POWER.md`). At the sweep's **n=25** pairs
+per cell, exact McNemar at alpha=0.05 with the observed 23% mean discordance:
 
-| true effect | n=30 | n=60 | n=120 | n=240 | n=480 |
+| true effect | n=25 | n=50 | n=100 | n=200 | n=400 |
 |---|---:|---:|---:|---:|---:|
-| 8.2 pp | 6% | 18% | 36% | 64% | 94% |
-| 13.7 pp | 20% | 44% | 79% | 99% | 100% |
-| 19.2 pp | 39% | 79% | 99% | 100% | 100% |
+| 6.8 pp | 3% | 12% | 20% | 48% | 76% |
+| 11.3 pp | 9% | 28% | 59% | 92% | 100% |
+| 15.9 pp | 16% | 57% | 94% | 100% | 100% |
 
-**At n=30 this design has ~6% power against an 8-point effect and ~20% against a
-14-point one.** It cannot reliably detect anything smaller than roughly 20 points.
+**At n=25 this design has ~3% power against a 7-point effect and ~9% against an 11-point
+one.** It cannot reliably detect anything smaller than roughly 16 points.
 
-The consequence for reading the results: the pre-registered primary cell came back null,
-and that null carries almost no information. Its discordant counts were b=6, c=5 —
-interleaving broke six conversations and fixed five. That is not "ordering did not
-matter"; it is two effects cancelling in a sample too small to separate them.
+The consequence for reading the results: the pre-registered primary cell came back at
+−12.0pp, p=0.508, and that null carries almost no information. Its discordant counts were
+b=6, c=3 — interleaving broke six conversations and fixed three, and nine discordant pairs
+cannot resolve a 12-point effect from noise. It is not "ordering did not matter"; it is a
+sample too small to separate the directions.
 
-Reaching 80% power against a 14-point effect needs roughly **120 pairs per cell**, four
-times what was run. That is the single cheapest improvement available and it is the
+Note the table's own warning about the exploratory cells. `tasks_4` reached p=0.039 at a
+28-point effect — comfortably above the ~16-point detection floor, so that one is not a
+power artifact. But `len_short` at −16.0pp did *not* reach significance, and at 16 points
+the design has only 16% power, so that null is uninformative rather than evidence of
+nothing.
+
+**The grid previously opened at n=30, a sample size no cell ever ran** — so every power
+figure quoted to qualify these results was for a larger sample than produced them, which
+flattered them slightly. The narrative sentence in `POWER.md` is now derived from the
+generated table rather than written beside it.
+
+Reaching ~90% power against an 11-point effect needs roughly **200 pairs per cell**, eight
+times what was run; 100 pairs buys 59%. That is the single cheapest improvement available and it is the
 first thing more compute should buy.
 
 ---

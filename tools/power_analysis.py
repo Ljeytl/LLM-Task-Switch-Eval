@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """What effect size can this design actually detect, at the n it was run at?
 
-Answering "is n=30 enough?" with a simulation rather than a hedge. Uses the discordance
+Answering "is this n enough?" with a simulation rather than a hedge. Uses the discordance
 rate observed in the real data, because McNemar's power depends on it and an assumed
 rate would be guessing at the thing that matters most.
 """
@@ -26,7 +26,19 @@ print("no information about ordering, so the discordant share IS the usable samp
 print("| model | cell | n | b | c | discordant |")
 print("|---|---|---:|---:|---:|---:|")
 disc_rates = []
-for (m, c), d in sorted(by.items()):
+#: Reading order for conditions; alphabetical puts len_long before len_medium before
+#: len_short, backwards along the axis the arm varies.
+CELL_ORDER = ["ctrl_1task", "len_short", "len_medium", "len_long",
+              "same_kind_2", "tasks_3", "tasks_4"]
+
+
+def _rank(key):
+    model, label = key
+    return (model, CELL_ORDER.index(label) if label in CELL_ORDER else len(CELL_ORDER),
+            label)
+
+
+for (m, c), d in sorted(by.items(), key=_rank):
     seeds = [s for s, v in d.items() if len(v) == 2]
     if not seeds:
         continue
@@ -43,11 +55,16 @@ print("## Power\n")
 print(f"Simulated, exact McNemar, alpha = 0.05, discordance {rate:.0%}, "
       "400 replicates per cell.\n")
 rng = np.random.default_rng(0)
-ns = (30, 60, 120, 240, 480)
+# 25 is the n the sweep ACTUALLY ran. The grid opened at 30 -- a value no cell used --
+# so every power figure quoted from this table was for a sample larger than the one that
+# produced the results it was being used to qualify.
+ns = (25, 50, 100, 200, 400)
 print("| true effect | " + " | ".join(f"n={n}" for n in ns) + " |")
 print("|---|" + "---:|" * len(ns))
+sweep_power: dict[float, str] = {}
 for split in (0.65, 0.75, 0.85):
     cells = []
+    row_effect = (2 * split - 1) * rate * 100
     for n in ns:
         hits = 0
         for _ in range(400):
@@ -57,8 +74,15 @@ for split in (0.65, 0.75, 0.85):
             il = [False] * b + [True] * (d - b) + [True] * (n - d)
             hits += mcnemar(bl, il)[1] < 0.05
         cells.append(f"{hits/400:.0%}")
-    print(f"| {(2*split-1)*rate*100:.1f} pp | " + " | ".join(cells) + " |")
+    print(f"| {row_effect:.1f} pp | " + " | ".join(cells) + " |")
+    sweep_power[round(row_effect, 1)] = cells[0]
 
-print("\n**Read this before reading any null in the results.** At n=30 this design has")
-print("roughly 15% power against a 12-point effect. A non-significant cell is evidence")
+# Derived, not asserted: this sentence previously quoted n=30 and 15% -- a sample size no
+# cell ran and a figure from an older table. A hand-written summary of a generated table
+# is one edit away from contradicting it.
+mid = sorted(sweep_power)[len(sweep_power) // 2]
+print(f"\n**Read this before reading any null in the results.** At the n={ns[0]} per cell "
+      f"this sweep actually ran, the design has")
+print(f"roughly {sweep_power[mid]} power against an {mid:.0f}-point effect. "
+      f"A non-significant cell is evidence")
 print("of insufficient sample, not evidence of no effect.")
