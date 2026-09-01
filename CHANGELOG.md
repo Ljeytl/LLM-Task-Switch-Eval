@@ -13,6 +13,8 @@
   entry is missing or invalid.
 - Cache coverage uses each result row's recorded model digest, matching `--rescore`
   without consulting the current local model tag.
+- Preflight validates the committed stratified sample by content rather than Git-unstable
+  filesystem timestamps.
 - Final-state parsing now rejects missing, extra or malformed task slots before scoring,
   and extraction cache keys include every generation option.
 - Exploratory inference now reports raw and Bonferroni-adjusted p-values across one
