@@ -136,16 +136,34 @@ Two things I did about it:
 1. **Reported the weaker claim.** The data support "misattribution needs a confusable
    neighbour," not "misattribution grows with task count." A 4-task conversation over four
    *distinct* kinds might show none.
-2. **Split the events by ordering**, which is further deflationary: 4 tasks is
-   **25 blocked vs 34 interleaved**. Substantial misattribution occurs in *blocked*
-   ordering, where the two shopping lists are never interleaved with each other. So
-   similarity drives the bulk and ordering modulates it by about a third. The
-   joint-accuracy delta is a genuine ordering effect; the misattribution count largely is
-   not, and reporting it as one would have overclaimed.
+2. **Split the events by ordering**, which showed interleaving is an amplifier rather than
+   the cause: 1.7x overall, and blocked ordering still produces 29 of the 79 events. I
+   first read only `tasks_4` (1.4x, the weakest ratio in the table) and concluded
+   interleaving was incidental — the cleanest cell says 5x, so that was wrong too. The
+   cell with the most events was not the cell with the most signal.
 
-**And built the experiment that settles it** (D18): `same_kind_2` is `[shopping, shopping]`
-— two tasks, one same-kind pair. Against `len_medium` it holds task count fixed and varies
-pair count; against `tasks_3` it holds pair count fixed and varies task count.
+**And built the experiment that settles it** (D18): `same_kind_2` is
+`[shopping, shopping]` — two tasks, one same-kind pair. Against `len_medium` it holds task
+count fixed and varies pair count; against `tasks_3` it holds pair count fixed and varies
+task count. **It resolved cleanly:**
+
+| qwen cell | tasks | same-kind pairs | misattribution |
+|---|---:|---:|---:|
+| `len_medium` | 2 | 0 | 0 |
+| `same_kind_2` | 2 | 1 | **12** |
+| `tasks_3` | 3 | 1 | 8 |
+| `tasks_4` | 4 | 2 | 59 |
+
+Pairs fixed, tasks 2 → 3: **12 → 8**, down. Tasks fixed, pairs 0 → 1: **0 → 12**.
+Similarity drives it; task count does not. The sentence I had written was wrong, and the
+one-line cell is what showed it.
+
+It also produced the sweep's largest effect, which I did not predict: at identical task
+count, ops and padding, a second *shopping list* instead of a calendar takes qwen from
+0.640 blocked to **0.000** — two similar tasks are harder than four dissimilar ones.
+Caveat in the same breath: that is the floor, so its ordering delta is uninterpretable.
+`gemma4:12b` is not at the floor (0.880 → 0.720) and logs **zero misattribution in all 350
+of its conversations**.
 
 *If asked "why not just add more task types?"* — four distinct kinds would break the
 collinearity too, but it needs two more state machines, vocabularies and template sets, and

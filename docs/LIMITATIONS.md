@@ -186,64 +186,95 @@ raise misattribution sharply.
 
 ---
 
-## 5b. Misattribution tracks same-kind *pairs*, which this design cannot separate from task count
+## 5b. Misattribution is driven by similarity, not by task count — the confound, and how it resolved
 
-This is the sharpest confound in the new arm, and it undercuts the obvious reading of the
-headline number.
+The task-count arm produced a clean monotone story: misattribution **0 → 8 → 59** across
+2, 3 and 4 tasks. The obvious reading is that concurrent tasks interfere and more tasks
+interfere more. That reading was not identified by the data.
 
 `tasks_for(n)` deals from `TASK_POOL = [SHOPPING, SCHEDULE]` round-robin, so the number of
 *same-kind pairs* — the only pairs between which misattribution is even possible, since
-the vocabularies of different kinds are disjoint — rises in lockstep with task count:
+different kinds draw disjoint vocabularies — rose in lockstep with task count. Pair count
+and task count were perfectly collinear across every cell in the sweep, so the design
+could not attribute the effect to either.
 
-| tasks | slots | same-kind pairs | misattribution events |
-|---:|---|---:|---:|
-| 1 | `shopping_0` | 0 | 0 |
-| 2 | `shopping_0, schedule_0` | 0 | 0 |
-| 3 | `+ shopping_1` | 1 | 8 |
-| 4 | `+ schedule_1` | 2 | 59 |
+`same_kind_2` (`tasks: [shopping, shopping]`, D18) breaks the collinearity: two tasks, one
+same-kind pair. **`qwen2.5-coder:7b`:**
 
-Pair count and task count are perfectly collinear across the cells actually run. So the
-claim the data supports is **"misattribution requires a confusable neighbour,"** not
-"misattribution grows with the number of concurrent tasks." Those are different claims
-and I can only demonstrate the first. A 4-task conversation over four *distinct* kinds
-might show none at all.
+| condition | tasks | same-kind pairs | misattribution events | conversations |
+|---|---:|---:|---:|---|
+| `len_medium` | 2 | 0 | 0 | 0/50 |
+| **`same_kind_2`** | **2** | **1** | **12** | 6/50 |
+| `tasks_3` | 3 | 1 | 8 | 5/50 |
+| `tasks_4` | 4 | 2 | 59 | 23/50 |
 
-**The experiment that separates them is one config line, and it is now shipped.** The
-`same_kind_2` cell is `tasks: [shopping, shopping]` — two tasks, one same-kind pair —
-which breaks the collinearity:
+Read the middle two rows against each other: **pair count held at 1, task count raised
+from 2 to 3, and misattribution went 12 → 8** — down, not up. Read the first two: task
+count held at 2, pair count raised from 0 to 1, and it went **0 → 12**.
 
-| cell | tasks | same-kind pairs |
-|---|---:|---:|
-| `len_medium` | 2 | 0 |
-| `same_kind_2` | 2 | **1** |
-| `tasks_3` | 3 | 1 |
+**Task count does not drive misattribution. A confusable neighbour does.** The claim I
+nearly published — that misattribution scales with the number of concurrent tasks — was
+wrong, and the arm that appeared to show it would have shown it just as convincingly if
+the mechanism had been anything else that happened to co-vary.
 
-`len_medium` and `same_kind_2` hold task count fixed and vary pair count; `same_kind_2`
-and `tasks_3` hold pair count fixed and vary task count. Misattribution in `same_kind_2`
-means similarity is the driver and the count is incidental; none means the count matters
-in its own right.
+What remains unseparated is the jump at two pairs (8–12 events at one pair, 59 at two).
+That is superlinear rather than additive, but `tasks_4` is the only two-pair cell, so
+whether that is a pair-count effect or a four-task effect is exactly the ambiguity this
+section began with, one level up. Saying so is cheaper than running the cell that would
+settle it, and I have not run it.
 
-Making this expressible needed a real change, not just a config edit — cells were
-specified by *count* only, and the cell id `t{n}_o{ops}_n{noise}` could not tell
-`[shopping, schedule]` from `[shopping, shopping]` (D18). The library never assumed
-distinct kinds; `build_states`, `order_ops` and the scorer all key on slot, so the
-constraint was entirely in the CLI.
+### Similarity is necessary; interleaving amplifies it
 
-### Interleaving is not the main cause of misattribution
+Splitting the events by ordering, on qwen:
 
-Splitting the events by ordering is deflationary in a way worth saying out loud:
+| cell | same-kind pairs | blocked | interleaved | ratio |
+|---|---:|---:|---:|---:|
+| every zero-pair cell | 0 | 0 | 0 | — |
+| `same_kind_2` | 1 | 2 (1/25 convs) | 10 (5/25 convs) | 5.0x |
+| `tasks_3` | 1 | 2 (1/25) | 6 (4/25) | 3.0x |
+| `tasks_4` | 2 | 25 (11/25) | 34 (12/25) | 1.4x |
+| **total** | | **29** | **50** | **1.7x** |
 
-| cell | blocked | interleaved |
-|---|---:|---:|
-| 3 tasks | 2 events (1/25 convs) | 6 events (4/25 convs) |
-| 4 tasks | 25 events (11/25 convs) | 34 events (12/25 convs) |
+Two claims, and only the first is about the design's headline variable:
 
-Misattribution is substantial in *blocked* ordering, where the two shopping lists are
-never interleaved with each other at all. Interleaving adds roughly a third on top. So the
-mechanism is mostly "two similar states in one context bleed together," with ordering as a
-secondary modulator — **not** "switching between them causes the bleed." The joint-accuracy
-delta remains a genuine ordering effect; the misattribution count largely is not, and
-reporting it as one would overclaim.
+1. **Similarity is necessary.** Zero events in every zero-pair cell, under *both*
+   orderings, across 200 qwen conversations. No amount of interleaving produces a
+   misattribution when there is nothing confusable to misattribute to.
+2. **Interleaving amplifies it substantially** — 1.7x overall, and 5x in `same_kind_2`,
+   the cleanest cell. It is not merely a modulator.
+
+But it is not *required*: blocked ordering produces 29 events, so a design that only ever
+presented tasks in blocks would still have found the failure. I first wrote this
+subsection reading only `tasks_4`, whose 1.4x ratio is the weakest in the table, and
+concluded interleaving was incidental. Reading the cell that was built to be clean says
+otherwise. The lesson is the one this document keeps relearning: the cell with the most
+events is not the cell with the most signal.
+
+### Similarity costs far more accuracy than task count does
+
+The same cell produced a second result I did not anticipate. At **identical** task count,
+operation count and padding, swapping the second task from a different kind to the same
+kind costs `qwen2.5-coder:7b` its entire score:
+
+| qwen cell | second task | blocked joint accuracy |
+|---|---|---:|
+| `len_medium` | a calendar | 0.640 |
+| `same_kind_2` | a second shopping list | **0.000** |
+| `tasks_4` | three more tasks | 0.400 |
+
+Two *similar* tasks are harder than four *dissimilar* ones. `gemma4:12b` shows the same
+sign at a fraction of the size (0.880 → 0.720) and **zero misattribution in all 350 of its
+conversations**, including both same-kind cells — it keeps two shopping lists apart where
+qwen cannot.
+
+**Two caveats on this cell.** First, qwen's `same_kind_2` sits on the **floor** (0.000
+blocked, 0.040 interleaved), so its ordering delta is uninterpretable — you cannot fall
+below zero. It answers "does similarity hurt?" decisively and "does interleaving hurt when
+tasks are similar?" not at all. Lifting it off the floor needs a lower `n_ops` for that
+cell, which is the same per-cell calibration gap as §4. gemma's copy is not at the floor,
+so its +4.0pp is interpretable, and it shows no switch cost. Second, "similarity" here
+bundles same-kind structure with overlapping item semantics; the design does not separate
+those two either.
 
 ---
 

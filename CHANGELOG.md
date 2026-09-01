@@ -30,12 +30,17 @@
   same-kind pair is the only place misattribution can occur. So the data support
   "misattribution needs a confusable neighbour", not "misattribution grows with task
   count". (LIMITATIONS 5b)
-- **Interleaving is not the main cause of misattribution.** Splitting by ordering:
-  4 tasks is 25 events blocked vs 34 interleaved; 3 tasks is 2 vs 6. Substantial
-  misattribution occurs in *blocked* ordering, where the two shopping lists are never
-  interleaved with each other. Ordering modulates it by roughly a third; similarity
-  drives the rest. The joint-accuracy delta remains a genuine ordering effect — the
-  misattribution count largely is not.
+- **Similarity is necessary for misattribution; interleaving amplifies it.** Zero events
+  in every zero-pair cell under *both* orderings, across 200 qwen conversations. Given a
+  same-kind pair, interleaving raises the count 1.7x overall and 5x in `same_kind_2`
+  (2 blocked vs 10 interleaved) -- but blocked ordering still produces 29 of the 79 events,
+  so interleaving is an amplifier, not the cause. I first wrote this reading only
+  `tasks_4`, whose 1.4x ratio is the weakest in the table, and concluded the opposite.
+- **Similarity costs far more accuracy than task count.** At identical task count, ops and
+  padding, swapping the second task from a calendar to a second shopping list takes
+  qwen2.5-coder:7b from 0.640 blocked to **0.000** -- worse than four dissimilar tasks
+  (0.400). gemma4:12b shows the same sign at a fraction of the size (0.880 -> 0.720) and
+  **zero misattribution across all 350 of its conversations**.
 
 ### Fixed
 - `cell.get("tasks", cell["n_tasks"])` evaluated its default eagerly and raised

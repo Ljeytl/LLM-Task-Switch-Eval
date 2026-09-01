@@ -150,13 +150,14 @@ else:
         f"\nTwo things keep this from being a clean task-count effect. First, kinds have "
         f"disjoint vocabularies, so a same-kind pair is the *only* place a misattribution "
         f"can occur — and under the canonical composition the pair count rises in lockstep "
-        f"with the task count, so the two cannot be separated by the count cells alone. "
-        f"That is what the `same_kind_2` cell exists to break. Second, the events split "
-        f"{by_ord['blocked']} blocked / {by_ord['interleaved']} interleaved: substantial "
-        f"misattribution happens in *blocked* ordering, where same-kind lists are never "
-        f"interleaved with each other at all. Similarity drives the bulk of it and "
-        f"ordering modulates it. The joint-accuracy delta above is a genuine ordering "
-        f"effect; this count largely is not.")
+        f"with the task count. The `same_kind_2` cell breaks that collinearity: at one "
+        f"same-kind pair, raising the task count from 2 to 3 moves the event count *down*, "
+        f"while at two tasks, raising the pair count from 0 to 1 moves it from zero. "
+        f"Similarity drives misattribution; task count does not. Second, the events split "
+        f"{by_ord['blocked']} blocked / {by_ord['interleaved']} interleaved: interleaving "
+        f"amplifies the count substantially, but blocked ordering — where same-kind lists "
+        f"never interleave — still produces a large share, so interleaving is an amplifier "
+        f"rather than the cause. See docs/LIMITATIONS.md 5b.")
 
 per_task, clusters = [], []
 for r in rows:

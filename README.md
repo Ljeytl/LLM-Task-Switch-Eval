@@ -52,12 +52,30 @@ Both models degrade monotonically as live states are added, and neither shows a 
 trend. The magnitude is strongly model-specific — qwen loses 28 points at four tasks
 (p=0.039), gemma 8 — so this is a shape both models share, not a constant.
 
-**Read the task-count arm with its confound attached.** Under the canonical composition
-the number of *same-kind pairs* rises in lockstep with task count, and a same-kind pair is
-the only place a misattribution can occur. The `same_kind_2` cell exists to separate them
-(§5b). Splitting the events by ordering is deflationary too: most misattribution happens
-in **blocked** ordering, where same-kind lists never interleave. Interleaving costs
-accuracy; similarity costs attribution; the task-count cells vary both at once.
+**Read the task-count arm with its confound attached — and then read the cell that
+resolves it.** Under the canonical composition the number of *same-kind pairs* rises in
+lockstep with task count, and a same-kind pair is the only place a misattribution can
+occur. `same_kind_2` (two tasks, one same-kind pair) breaks the collinearity, on
+`qwen2.5-coder:7b`:
+
+| cell | tasks | same-kind pairs | misattribution |
+|---|---:|---:|---:|
+| `len_medium` | 2 | 0 | 0 |
+| **`same_kind_2`** | **2** | **1** | **12** |
+| `tasks_3` | 3 | 1 | 8 |
+| `tasks_4` | 4 | 2 | 59 |
+
+Hold pairs at 1 and raise tasks 2 → 3: misattribution goes **12 → 8**. Hold tasks at 2 and
+raise pairs 0 → 1: **0 → 12**. **Similarity drives misattribution; task count does not.**
+Interleaving amplifies it 1.7x overall (5x in `same_kind_2`) but is not required —
+blocked ordering produces 29 of the 79 events. `gemma4:12b` records **zero misattribution
+in all 350 of its conversations**, same-kind cells included.
+
+That cell also produced the largest single effect in the sweep. At identical task count,
+operations and padding, swapping the second task from a calendar to a second shopping list
+takes qwen from **0.640 blocked to 0.000** — two *similar* tasks are harder than four
+*dissimilar* ones (0.400). It is on the floor, so its ordering delta says nothing; gemma's
+copy is not (0.880 → 0.720, zero misattribution) and shows no switch cost.
 
 ![switch cost](results/dumbbell.png)
 
@@ -149,11 +167,14 @@ analysis in [`results/POWER.md`](results/POWER.md).
 | `gemma4:12b` | len_short | 0.800 | 0.880 | +8.0 | 0/2 | 0.500 |
 | `gemma4:12b` | len_medium | 0.880 | 0.960 | +8.0 | 0/2 | 0.500 |
 | `gemma4:12b` | len_long | 0.960 | 0.840 | -12.0 | 4/1 | 0.375 |
+| `gemma4:12b` | same_kind_2 | 0.720 | 0.760 | +4.0 | 3/4 | 1.000 |
 | `gemma4:12b` | tasks_3 | 0.680 | 0.640 | -4.0 | 4/3 | 1.000 |
+| `gemma4:12b` | tasks_4 | 0.720 | 0.640 | -8.0 | 4/2 | 0.688 |
 | `qwen2.5-coder:7b` | ctrl_1task *(control)* | 0.320 | 0.320 | +0.0 | 0/0 | 1.000 |
 | `qwen2.5-coder:7b` | len_short | 0.840 | 0.680 | -16.0 | 5/1 | 0.219 |
 | `qwen2.5-coder:7b` | **len_medium (PRIMARY)** | 0.640 | 0.520 | -12.0 | 6/3 | 0.508 |
 | `qwen2.5-coder:7b` | len_long | 0.560 | 0.440 | -12.0 | 6/3 | 0.508 |
+| `qwen2.5-coder:7b` | same_kind_2 | 0.000 | 0.040 | +4.0 | 0/1 | 1.000 |
 | `qwen2.5-coder:7b` | tasks_3 | 0.400 | 0.200 | -20.0 | 5/0 | 0.062 |
 | `qwen2.5-coder:7b` | tasks_4 | 0.400 | 0.120 | **-28.0** | 8/1 | **0.039** |
 <!-- END:results-table -->
