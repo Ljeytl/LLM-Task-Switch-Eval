@@ -36,14 +36,19 @@ elif [ -s results/v1/sweep.jsonl ]; then
 else
   bad "no sweep data in results/ or results/v1/"
 fi
-n_cache=$(ls results/cache 2>/dev/null | wc -l | tr -d ' ')
-n_rows=$( [ -s results/sweep.jsonl ] && wc -l < results/sweep.jsonl | tr -d ' ' || echo 0)
-if [ "$n_cache" -ge "$n_rows" ] && [ "$n_cache" -gt 0 ]; then
-  ok "response cache ($n_cache entries covers $n_rows rows) -- --rescore needs no inference"
-elif pgrep -f "run.py --config" >/dev/null 2>&1; then
-  ok "response cache filling ($n_cache entries); a sweep is still running"
+# Exact, not counted. Counting cache entries against rows undercounts by exactly the
+# size of the one-task control, whose two orderings render byte-identical prompts and so
+# legitimately share a single cache entry -- a complete cache reported as incomplete.
+if pgrep -f "run.py --config" >/dev/null 2>&1; then
+  ok "response cache check skipped; a sweep is still running"
+elif [ -s results/sweep.jsonl ]; then
+  if cov=$($PY tools/check_cache_coverage.py results/sweep.jsonl 2>&1); then
+    ok "response cache covers every row -- --rescore needs no inference"
+  else
+    bad "response cache incomplete: $(printf '%s' "$cov" | tail -n 3 | tr '\n' ' ')"
+  fi
 else
-  bad "response cache ($n_cache entries) does not cover $n_rows rows; --rescore will re-run inference"
+  bad "no results/sweep.jsonl to check the cache against"
 fi
 # Presence is not currency. Every one of these is DERIVED from sweep.jsonl, so one older
 # than the data is reporting the previous sweep's numbers under this sweep's name -- which
