@@ -45,8 +45,20 @@ elif pgrep -f "run.py --config" >/dev/null 2>&1; then
 else
   bad "response cache ($n_cache entries) does not cover $n_rows rows; --rescore will re-run inference"
 fi
-for f in RESULTS.md POWER.md sample.jsonl dumbbell.png; do
-  if [ -s "results/$f" ]; then ok "present: results/$f"
+# Presence is not currency. Every one of these is DERIVED from sweep.jsonl, so one older
+# than the data is reporting the previous sweep's numbers under this sweep's name -- which
+# a presence check passes happily. Compared by mtime, and only when the data is v2 and no
+# sweep is still writing to it.
+sweep_running=$(pgrep -f "run.py --config" >/dev/null 2>&1 && echo yes || echo no)
+for f in RESULTS.md POWER.md sample.jsonl dumbbell.png taxonomy.png; do
+  if [ -s "results/$f" ]; then
+    if [ "$sweep_running" = yes ]; then
+      ok "present: results/$f (sweep still running; staleness not checked)"
+    elif [ -s results/sweep.jsonl ] && [ "results/$f" -ot results/sweep.jsonl ]; then
+      bad "STALE: results/$f predates results/sweep.jsonl -- run: ./tools/finalize.sh"
+    else
+      ok "present and current: results/$f"
+    fi
   elif [ -s "results/v1/$f" ]; then ok "present: results/v1/$f (v1 archive)"
   else bad "missing: $f in results/ and results/v1/"; fi
 done
