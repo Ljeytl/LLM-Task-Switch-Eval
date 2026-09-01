@@ -129,16 +129,21 @@ Full tables in [`results/RESULTS.md`](results/RESULTS.md), rendered directly fro
 data by `tools/make_readme_results.py` so the numbers cannot drift from the run. Power
 analysis in [`results/POWER.md`](results/POWER.md).
 
-| model | condition | blocked | interleaved | delta | McNemar b/c | p |
+<!-- BEGIN:results-table -->
+| model | condition | blocked | interleaved | delta (pp) | McNemar b/c | p |
 |---|---|---:|---:|---:|---|---:|
-| `qwen2.5-coder:7b` | ctrl_1task *(control)* | 0.600 | 0.600 | **+0.0** | 0/0 | 1.000 |
-| `qwen2.5-coder:7b` | len_short | 0.900 | 0.700 | −20.0 | 7/1 | 0.070 |
-| `qwen2.5-coder:7b` | **len_medium (PRIMARY)** | 0.467 | 0.433 | −3.3 | 6/5 | 1.000 |
-| `qwen2.5-coder:7b` | len_long | 0.667 | 0.333 | **−33.3** | 12/2 | **0.013** |
-| `gemma4:12b` | ctrl_1task *(control)* | 0.933 | 0.933 | **+0.0** | 0/0 | 1.000 |
-| `gemma4:12b` | len_short | 0.900 | 0.900 | +0.0 | 0/0 | 1.000 |
-| `gemma4:12b` | len_medium | 0.967 | 0.933 | −3.3 | 2/1 | 1.000 |
-| `gemma4:12b` | len_long | 0.833 | 0.800 | −3.3 | 3/2 | 1.000 |
+| `gemma4:12b` | ctrl_1task *(control)* | 0.760 | 0.760 | +0.0 | 0/0 | 1.000 |
+| `gemma4:12b` | len_short | 0.800 | 0.880 | +8.0 | 0/2 | 0.500 |
+| `gemma4:12b` | len_medium | 0.880 | 0.960 | +8.0 | 0/2 | 0.500 |
+| `gemma4:12b` | len_long | 0.960 | 0.840 | -12.0 | 4/1 | 0.375 |
+| `gemma4:12b` | tasks_3 | 0.680 | 0.640 | -4.0 | 4/3 | 1.000 |
+| `qwen2.5-coder:7b` | ctrl_1task *(control)* | 0.320 | 0.320 | +0.0 | 0/0 | 1.000 |
+| `qwen2.5-coder:7b` | len_short | 0.840 | 0.680 | -16.0 | 5/1 | 0.219 |
+| `qwen2.5-coder:7b` | **len_medium (PRIMARY)** | 0.640 | 0.520 | -12.0 | 6/3 | 0.508 |
+| `qwen2.5-coder:7b` | len_long | 0.560 | 0.440 | -12.0 | 6/3 | 0.508 |
+| `qwen2.5-coder:7b` | tasks_3 | 0.400 | 0.200 | -20.0 | 5/0 | 0.062 |
+| `qwen2.5-coder:7b` | tasks_4 | 0.400 | 0.120 | **-28.0** | 8/1 | **0.039** |
+<!-- END:results-table -->
 
 Three things to read carefully:
 

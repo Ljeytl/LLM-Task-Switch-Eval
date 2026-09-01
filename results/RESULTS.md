@@ -18,6 +18,9 @@ value there would invalidate everything below it.
 |---|---|---:|---:|---:|---:|---|---|---:|
 | `gemma4:12b` | ctrl_1task *(control)* | 25 | 0.76 <sub>[0.57,0.89]</sub> | 0.76 <sub>[0.57,0.89]</sub> | +0.0 | [+0.0, +0.0] | 0/0 | 1.000 |
 | `gemma4:12b` | len_short *(exploratory)* | 25 | 0.80 <sub>[0.61,0.91]</sub> | 0.88 <sub>[0.70,0.96]</sub> | +8.0 | [+0.0, +20.0] | 0/2 | 0.500 |
+| `gemma4:12b` | len_medium *(exploratory)* | 25 | 0.88 <sub>[0.70,0.96]</sub> | 0.96 <sub>[0.80,0.99]</sub> | +8.0 | [+0.0, +20.0] | 0/2 | 0.500 |
+| `gemma4:12b` | len_long *(exploratory)* | 25 | 0.96 <sub>[0.80,0.99]</sub> | 0.84 <sub>[0.65,0.94]</sub> | -12.0 | [-28.0, +4.0] | 4/1 | 0.375 |
+| `gemma4:12b` | tasks_3 *(exploratory)* | 25 | 0.68 <sub>[0.48,0.83]</sub> | 0.64 <sub>[0.45,0.80]</sub> | -4.0 | [-24.0, +16.0] | 4/3 | 1.000 |
 | `qwen2.5-coder:7b` | ctrl_1task *(control)* | 25 | 0.32 <sub>[0.17,0.52]</sub> | 0.32 <sub>[0.17,0.52]</sub> | +0.0 | [+0.0, +0.0] | 0/0 | 1.000 |
 | `qwen2.5-coder:7b` | len_short *(exploratory)* | 25 | 0.84 <sub>[0.65,0.94]</sub> | 0.68 <sub>[0.48,0.83]</sub> | -16.0 | [-36.0, +0.0] | 5/1 | 0.219 |
 | `qwen2.5-coder:7b` | len_medium **(PRIMARY)** | 25 | 0.64 <sub>[0.45,0.80]</sub> | 0.52 <sub>[0.33,0.70]</sub> | -12.0 | [-36.0, +12.0] | 6/3 | 0.508 |
@@ -29,8 +32,8 @@ value there would invalidate everything below it.
 
 | model | ordering | dropped | misattributed | absorbed | format | n failures |
 |---|---|---:|---:|---:|---:|---:|
-| `gemma4:12b` | blocked | 47% | 0% | 53% | 0% | 19 |
-| `gemma4:12b` | interleaved | 53% | 0% | 47% | 0% | 17 |
+| `gemma4:12b` | blocked | 48% | 0% | 52% | 0% | 44 |
+| `gemma4:12b` | interleaved | 44% | 0% | 56% | 0% | 39 |
 | `qwen2.5-coder:7b` | blocked | 40% | 22% | 38% | 0% | 125 |
 | `qwen2.5-coder:7b` | interleaved | 39% | 21% | 39% | 0% | 188 |
 
@@ -38,12 +41,12 @@ value there would invalidate everything below it.
 
 | failure mode | count | share |
 |---|---:|---:|
-| dropped / vanished | 134 | 38.4% |
-| absorbed / false assertion | 68 | 19.5% |
-| misattributed | 67 | 19.2% |
-| absorbed / hallucination | 63 | 18.1% |
-| absorbed / stale value | 9 | 2.6% |
-| dropped / wrong value | 8 | 2.3% |
+| dropped / vanished | 154 | 38.9% |
+| absorbed / hallucination | 87 | 22.0% |
+| absorbed / false assertion | 70 | 17.7% |
+| misattributed | 67 | 16.9% |
+| absorbed / stale value | 10 | 2.5% |
+| dropped / wrong value | 8 | 2.0% |
 
 **Misattribution occurred, and the obvious reading of it is wrong.**
 
@@ -51,16 +54,16 @@ value there would invalidate everything below it.
 |---|---:|---:|---:|---|
 | ctrl_1task | 1 | 0 | 0 | 0/100 |
 | len_short | 2 | 0 | 0 | 0/100 |
-| len_medium | 2 | 0 | 0 | 0/50 |
-| len_long | 2 | 0 | 0 | 0/50 |
-| tasks_3 | 3 | 1 | 8 | 5/50 |
+| len_medium | 2 | 0 | 0 | 0/100 |
+| len_long | 2 | 0 | 0 | 0/100 |
+| tasks_3 | 3 | 1 | 8 | 5/100 |
 | tasks_4 | 4 | 2 | 59 | 23/50 |
 
 Two things keep this from being a clean task-count effect. First, kinds have disjoint vocabularies, so a same-kind pair is the *only* place a misattribution can occur — and under the canonical composition the pair count rises in lockstep with the task count, so the two cannot be separated by the count cells alone. That is what the `same_kind_2` cell exists to break. Second, the events split 27 blocked / 40 interleaved: substantial misattribution happens in *blocked* ordering, where same-kind lists are never interleaved with each other at all. Similarity drives the bulk of it and ordering modulates it. The joint-accuracy delta above is a genuine ordering effect; this count largely is not.
 
 ### Validation counters
 
-- **Token match:** 400/400 conversations exact (0 drifted), verified against Ollama's `prompt_eval_count`.
-- **Parse rate:** 400/400 (100.0%) under schema-constrained decoding.
-- **Per-task accuracy:** 0.702, clustered SE 0.0239 vs naive SE 0.0157 — ratio **1.52x** (the naive SE understates uncertainty).
-- **Rows:** 400 conversations across 8 model-condition cells.
+- **Token match:** 550/550 conversations exact (0 drifted), verified against Ollama's `prompt_eval_count`.
+- **Parse rate:** 550/550 (100.0%) under schema-constrained decoding.
+- **Per-task accuracy:** 0.766, clustered SE 0.0183 vs naive SE 0.0122 — ratio **1.50x** (the naive SE understates uncertainty).
+- **Rows:** 550 conversations across 11 model-condition cells.

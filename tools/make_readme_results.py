@@ -7,6 +7,7 @@ Writes results/RESULTS.md, which README.md includes by reference.
 from __future__ import annotations
 
 import collections, json, sys
+import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -178,4 +179,42 @@ out += ["\n### Validation counters\n",
         f"- **Rows:** {len(rows)} conversations across {len(groups)} model-condition cells."]
 
 Path("results/RESULTS.md").write_text("\n".join(out) + "\n")
+
+
+# --- Inject the compact table into README.md ------------------------------------------
+# The README carried a hand-maintained copy of this table, which drifted: it still showed
+# v1 numbers after the v2 sweep replaced them. A summary duplicated by hand is a summary
+# that will be wrong, so it is generated between markers and rewritten here.
+BEGIN, END = "<!-- BEGIN:results-table -->", "<!-- END:results-table -->"
+
+compact = ["| model | condition | blocked | interleaved | delta (pp) | McNemar b/c | p |",
+           "|---|---|---:|---:|---:|---|---:|"]
+for (model, label), rs in sorted(groups.items(),
+                                 key=lambda kv: (kv[0][0], cell_rank(kv[0][1]))):
+    ok = [r for r in rs if r["parse_ok"]]
+    b, i = paired(ok)
+    if not b:
+        continue
+    stat, pv = mcnemar(b, i)
+    t = mcnemar_table(b, i)
+    bl, il = sum(b) / len(b), sum(i) / len(i)
+    d = (il - bl) * 100
+    name = (f"**{label} (PRIMARY)**" if label == "len_medium" and "qwen" in model
+            else f"{label} *(control)*" if label == "ctrl_1task" else label)
+    mark = "**" if pv < 0.05 else ""
+    compact.append(f"| `{model}` | {name} | {bl:.3f} | {il:.3f} | "
+                   f"{mark}{d:+.1f}{mark} | {t.b}/{t.c} | "
+                   f"{'**' if pv < 0.05 else ''}{pv:.3f}{'**' if pv < 0.05 else ''} |")
+
+readme = Path("README.md")
+text = readme.read_text()
+if BEGIN in text and END in text:
+    head, rest = text.split(BEGIN, 1)
+    _, tail = rest.split(END, 1)
+    readme.write_text(head + BEGIN + "\n" + "\n".join(compact) + "\n" + END + tail)
+    print("updated README.md results table", file=sys.stderr)
+else:
+    print("WARNING: README.md has no results-table markers; table not updated",
+          file=sys.stderr)
+
 print("\n".join(out))

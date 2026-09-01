@@ -169,3 +169,33 @@ class TestStratifiedSample:
         b = stratified(list(reversed(rows)))
         assert [(r["model"], r["cell"], r["seed"], r["ordering"]) for r in a] == \
                [(r["model"], r["cell"], r["seed"], r["ordering"]) for r in b]
+
+
+class TestReadmeTableMarkers:
+    """The README carried a hand-maintained copy of the results table and it drifted --
+    it still showed v1 numbers after v2 replaced them. It is generated between markers
+    now; if the markers go missing the generator degrades to a warning on stderr and the
+    stale table silently survives, so their presence is asserted."""
+
+    @staticmethod
+    def _readme():
+        return Path("README.md").read_text()
+
+    def test_markers_present_and_ordered(self):
+        text = self._readme()
+        begin, end = "<!-- BEGIN:results-table -->", "<!-- END:results-table -->"
+        assert begin in text and end in text, "generator would silently skip the table"
+        assert text.index(begin) < text.index(end)
+
+    def test_exactly_one_marker_pair(self):
+        text = self._readme()
+        assert text.count("<!-- BEGIN:results-table -->") == 1
+        assert text.count("<!-- END:results-table -->") == 1
+
+    def test_region_holds_a_table_not_prose(self):
+        text = self._readme()
+        body = text.split("<!-- BEGIN:results-table -->")[1].split(
+            "<!-- END:results-table -->")[0].strip()
+        lines = [ln for ln in body.splitlines() if ln.strip()]
+        assert lines, "results table region is empty"
+        assert all(ln.startswith("|") for ln in lines), "region must hold only the table"
