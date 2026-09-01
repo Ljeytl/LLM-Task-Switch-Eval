@@ -40,7 +40,7 @@ primary metric. Everything else in the repo exists to protect that property.
 | `runner.py` | Ollama client, response cache, runtime token verification | Only the final turn is generated. Assistant turns are prefilled with a fixed `"Got it."`. |
 | `scorer.py` | Diff + failure taxonomy | Pure: no model calls, no I/O. The corpus can be re-scored from cache without re-running inference. |
 | `stats.py` | Wilson, McNemar, paired bootstrap, clustered SE | See `STATS.md`. Every estimator is chosen over a more obvious alternative for a stated reason. |
-| `plots.py` | Dumbbell (primary), taxonomy bars | The dumbbell's *slope* is the switch cost. |
+| `plots.py` | Dumbbell (primary), taxonomy bars | The dumbbell's *slope* is the matched-token ordering delta. |
 | `run.py` | CLI: demo, calibrate, check-constrained, sweep, analyse, rescore | Checkpoints results after every cell so a long sweep is resumable. |
 
 ## Task identity is a slot

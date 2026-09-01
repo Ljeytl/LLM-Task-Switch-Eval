@@ -1,5 +1,45 @@
 # Changelog
 
+## v2.2 — interview-readiness and evidence integrity
+
+### Fixed
+- The documented test suite no longer overwrites `results/audit_sample.jsonl`.
+  `audit_taxonomy.py` is read-only by default and requires an explicit output path to
+  generate a blind sample; regression tests prove the tracked sample remains unchanged.
+- The taxonomy grounding checker now handles a moved schedule entry when a wrong-time
+  copy with the same title remains in the original task. The full audit grounds 590/590
+  emitted discrepancies.
+- `--rescore` is cache-only and fails before modifying the source dataset when any cache
+  entry is missing or invalid.
+- Cache coverage uses each result row's recorded model digest, matching `--rescore`
+  without consulting the current local model tag.
+- Final-state parsing now rejects missing, extra or malformed task slots before scoring,
+  and extraction cache keys include every generation option.
+- Exploratory inference now reports raw and Bonferroni-adjusted p-values across one
+  deterministic 11-comparison family. The qwen `tasks_4` row is raw p=0.039 and adjusted
+  p=0.430, not corrected significance.
+
+### Added
+- The complete 700-row v2 `results/sweep.jsonl`, making the public result tables
+  reproducible without the private response cache or local inference.
+- `uv.lock` for the demonstrated Python environment.
+
+### Changed
+- Reframed the current evidence as an exploratory matched-token ordering experiment.
+  The repository-prespecified primary is inconclusive, and fixed blocked-task order
+  leaves serial position and recency unresolved.
+- Replaced causal claims about task count, similarity and interleaving with the narrower
+  observation that a same-kind neighbour was sufficient to expose qwen misattribution in
+  this instrument.
+- Corrected stale cell, corpus, test, calibration, power and v1/v2 documentation.
+
+### Next
+- Counterbalance blocked-task order and interleaved starting position before a
+  confirmatory switch-cost run.
+- Replace ambiguous imperative templates before rerunning inference.
+- Increase the primary sample, add generative assistant turns, and obtain an independent
+  human taxonomy-label pass.
+
 ## v2.1 — separating confusability from task count
 
 ### Added
@@ -23,24 +63,21 @@
   count and so assumed the canonical pool; on an explicit composition it would have graded
   against the wrong states. Old rows fall back to the count.
 
-### Found
+### Found (historical interpretation, corrected in v2.2)
 - **The task-count result is confounded, and I nearly reported it as clean.** Same-kind
   pairs run 0, 0, 1, 2 as tasks run 1..4 under the canonical pool — perfectly collinear
   with task count across every cell run. Since kinds have disjoint vocabularies, a
-  same-kind pair is the only place misattribution can occur. So the data support
-  "misattribution needs a confusable neighbour", not "misattribution grows with task
-  count". (LIMITATIONS 5b)
-- **Similarity is necessary for misattribution; interleaving amplifies it.** Zero events
-  in every zero-pair cell under *both* orderings, across 200 qwen conversations. Given a
-  same-kind pair, interleaving raises the count 1.7x overall and 5x in `same_kind_2`
-  (2 blocked vs 10 interleaved) -- but blocked ordering still produces 29 of the 79 events,
-  so interleaving is an amplifier, not the cause. I first wrote this reading only
-  `tasks_4`, whose 1.4x ratio is the weakest in the table, and concluded the opposite.
-- **Similarity costs far more accuracy than task count.** At identical task count, ops and
-  padding, swapping the second task from a calendar to a second shopping list takes
-  qwen2.5-coder:7b from 0.640 blocked to **0.000** -- worse than four dissimilar tasks
-  (0.400). gemma4:12b shows the same sign at a fraction of the size (0.880 -> 0.720) and
-  **zero misattribution across all 350 of its conversations**.
+  same-kind neighbours make cross-slot misattribution easier to expose. So the monotone
+  counts do not identify a task-count effect. (LIMITATIONS 5b)
+- **The same-kind cell exposed a strong descriptive contrast.** Zero entries appeared in
+  the zero-pair cells, while the same-kind cell produced misattribution entries. The
+  original release interpreted event-count ratios as necessity and amplification; v2.2
+  retracts that causal wording because entries are clustered within conversations and
+  the comparison also changes task mechanics and exposure.
+- **The same-kind accuracy contrast was large but not an isolated similarity effect.**
+  Swapping a calendar for another shopping list changes schema and task mechanics as
+  well as neighbour similarity. The four-task cell also contains two same-kind pairs,
+  so the original “four dissimilar tasks” description was incorrect.
 
 ### Fixed
 - `cell.get("tasks", cell["n_tasks"])` evaluated its default eagerly and raised

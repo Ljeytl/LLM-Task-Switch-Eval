@@ -11,19 +11,21 @@ catches a classifier that invents failures or mislabels which task an entity bel
 It cannot tell you whether a *bucket* is the right one, only that the underlying
 discrepancy is real.
 
-**Pass 2 — blind sample for human review.** Writes `results/audit_sample.jsonl` with the
-automatic label withheld, so a human can classify from the evidence and agreement can be
-computed afterwards with `--score`. Reported honestly: until a human fills it in, this
-project has a *grounding* check, not an *agreement* number.
+**Pass 2 — blind sample for human review.** With an explicit `--output`, writes a sample
+with the automatic label withheld, so a human can classify from the evidence and
+agreement can be computed afterwards with `--score`. Reported honestly: until a human
+fills it in, this project has a *grounding* check, not an *agreement* number.
 
-    python tools/audit_taxonomy.py results/sweep.jsonl        # run both passes
+    python tools/audit_taxonomy.py results/sweep.jsonl        # grounding, read-only
+    python tools/audit_taxonomy.py results/sweep.jsonl \
+        --output results/audit_sample.jsonl                   # also create sample
     python tools/audit_taxonomy.py --score results/audit_sample.jsonl
 """
 from __future__ import annotations
 
+import argparse
 import json
 import random
-import sys
 from pathlib import Path
 
 BUCKETS = ["dropped", "misattributed", "absorbed", "format"]
@@ -118,23 +120,23 @@ def grounding_pass(rows):
             if not ident:
                 continue
             in_exp, in_got = ident in exp.get(task, set()), ident in got.get(task, set())
-            elsewhere = any(ident in got.get(t, set()) for t in got if t != task) or \
-                        any(ident in exp.get(t, set()) for t in exp if t != task)
+            exp_here = {e for e in exp_e.get(task, set()) if e[1] == ident}
+            got_here = {e for e in got_e.get(task, set()) if e[1] == ident}
+            got_elsewhere = any(ident in got.get(t, set()) for t in got if t != task)
+            exp_elsewhere = any(ident in exp.get(t, set()) for t in exp if t != task)
             if suffix == "wrong value":
                 # Present on both sides under the same identity, but the value differs.
-                real = in_exp and in_got and (
-                    {e for e in exp_e.get(task, set()) if e[1] == ident} !=
-                    {e for e in got_e.get(task, set()) if e[1] == ident})
+                real = in_exp and in_got and exp_here != got_here
             elif suffix == "stale":
                 # A second, out-of-date copy: the identity is expected AND reported,
                 # and the reported side carries an entry the expected side does not.
-                real = in_exp and in_got and bool(
-                    {e for e in got_e.get(task, set()) if e[1] == ident}
-                    - {e for e in exp_e.get(task, set()) if e[1] == ident})
+                real = in_exp and in_got and bool(got_here - exp_here)
             elif suffix in ("false_assert", "hallucination"):
                 real = in_got and not in_exp
-            elif suffix in ("-> other task", "from other task"):
-                real = elsewhere and (in_exp != in_got)
+            elif suffix == "-> other task":
+                real = bool(exp_here - got_here) and got_elsewhere
+            elif suffix == "from other task":
+                real = bool(got_here - exp_here) and exp_elsewhere
             else:                                    # plain dropped
                 real = in_exp and not in_got
             if not real:
@@ -177,11 +179,22 @@ def score_agreement(path):
                   f"{r['discrepancy']}")
 
 
-def main() -> None:
-    if "--score" in sys.argv:
-        score_agreement(sys.argv[sys.argv.index("--score") + 1])
+def parse_args(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("source", nargs="?", default="results/sweep.jsonl")
+    parser.add_argument("--output", type=Path,
+                        help="write a blind review sample (never written by default)")
+    parser.add_argument("--score", type=Path,
+                        help="score a completed blind review sample")
+    return parser.parse_args(argv)
+
+
+def main(argv=None) -> None:
+    args = parse_args(argv)
+    if args.score:
+        score_agreement(args.score)
         return
-    src = Path(sys.argv[1] if len(sys.argv) > 1 else "results/sweep.jsonl")
+    src = Path(args.source)
     rows = [json.loads(l) for l in src.read_text().splitlines() if l.strip()]
 
     checked, ungrounded, problems = grounding_pass(rows)
@@ -190,12 +203,12 @@ def main() -> None:
     for s, o, d in problems:
         print(f"   ungrounded: seed={s} {o} {d}")
 
-    sample = blind_sample(rows)
-    out = Path("results/audit_sample.jsonl")
-    out.write_text("\n".join(json.dumps(r) for r in sample) + "\n")
-    print(f"PASS 2: wrote {len(sample)} blind cases to {out}")
-    print("        fill `human_label` on each, then: "
-          "python tools/audit_taxonomy.py --score results/audit_sample.jsonl")
+    if args.output:
+        sample = blind_sample(rows)
+        args.output.write_text("\n".join(json.dumps(r) for r in sample) + "\n")
+        print(f"PASS 2: wrote {len(sample)} blind cases to {args.output}")
+        print("        fill `human_label` on each, then: "
+              f"python tools/audit_taxonomy.py --score {args.output}")
 
 
 if __name__ == "__main__":

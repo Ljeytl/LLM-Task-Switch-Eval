@@ -6,13 +6,22 @@ Writes results/RESULTS.md, which README.md includes by reference.
 """
 from __future__ import annotations
 
-import collections, json, sys
+import collections
+import json
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from taskswitch.stats import (clustered_se, mcnemar, mcnemar_table, naive_se,
-                              paired_bootstrap, wilson)
+from taskswitch.stats import (
+    adjust_comparison_pvalues,
+    clustered_se,
+    conversation_cluster_id,
+    mcnemar,
+    mcnemar_table,
+    naive_se,
+    paired_bootstrap,
+    wilson,
+)
 
 rows = [json.loads(l) for l in Path("results/sweep.jsonl").read_text().splitlines() if l.strip()]
 
@@ -30,12 +39,12 @@ for r in rows:
 
 PREAMBLE = """### How to read this
 
-`len_medium` on `qwen2.5-coder:7b` is the **pre-registered primary comparison**. It was
-chosen before the sweep ran and is reported uncorrected. Every other row is
-**exploratory**: if one of them shows a larger effect than the primary, that is a
-hypothesis to test, not a finding to report. Swapping the headline to whichever cell
-came out strongest is exactly the practice pre-registration exists to prevent, and the
-temptation is real precisely when the primary comes back null.
+`len_medium` on `qwen2.5-coder:7b` is the **repository-prespecified primary comparison**.
+Git history records it before the v2 sweep; there was no external registry. It is
+reported uncorrected. Every other inferential row is **exploratory**, except the
+negative-control rows. Exploratory p-values receive one Bonferroni correction across the
+complete model-condition family; both raw and adjusted values are shown. If one shows a
+larger effect than the primary, that is a hypothesis to test, not a finding to report.
 
 `ctrl_1task` is a **negative control**. With one task there is nothing to interleave, so
 both orderings are the identical prompt and the delta must be exactly 0.0. A non-zero
@@ -54,11 +63,8 @@ def cell_rank(label: str) -> tuple[int, str]:
     return (CELL_ORDER.index(label) if label in CELL_ORDER else len(CELL_ORDER), label)
 
 
-out = [PREAMBLE, "### Joint goal accuracy by condition\n",
-       "| model | condition | n pairs | blocked | interleaved | delta (pp) | 95% CI | McNemar b/c | p |",
-       "|---|---|---:|---:|---:|---:|---|---|---:|"]
-for (model, label), rs in sorted(groups.items(),
-                                key=lambda kv: (kv[0][0], cell_rank(kv[0][1]))):
+estimates = []
+for (model, label), rs in groups.items():
     ok = [r for r in rs if r["parse_ok"]]
     b, i = paired(ok)
     if not b:
@@ -66,18 +72,33 @@ for (model, label), rs in sorted(groups.items(),
     stat, p = mcnemar(b, i)
     d, lo, hi = paired_bootstrap(b, i, 10000, 0)
     t = mcnemar_table(b, i)
+    estimates.append((model, label, b, i, d, lo, hi, t, p))
+
+inference = adjust_comparison_pvalues(
+    (model, label, p) for model, label, *_, p in estimates)
+family_size = max((v.family_size for v in inference.values()), default=0)
+out = [PREAMBLE,
+       f"Exploratory Bonferroni family size: **m={family_size}**.\n",
+       "### Joint goal accuracy by condition\n",
+       "| model | condition | n pairs | blocked | interleaved | delta (pp) | 95% paired-bootstrap interval | McNemar b/c | raw p | Bonferroni p |",
+       "|---|---|---:|---:|---:|---:|---|---|---:|---:|"]
+for model, label, b, i, d, lo, hi, t, p in sorted(
+        estimates, key=lambda e: (e[0], cell_rank(e[1]))):
     bl, il = sum(b)/len(b), sum(i)/len(i)
     wb, wi = wilson(sum(b), len(b)), wilson(sum(i), len(i))
-    if label == "len_medium" and "qwen" in model:
+    result = inference[(model, label)]
+    if result.role == "primary":
         star = " **(PRIMARY)**"
-    elif label == "ctrl_1task":
+    elif result.role == "control":
         star = " *(control)*"
     else:
         star = " *(exploratory)*"
+    adjusted = f"{result.adjusted:.3f}" if result.adjusted is not None else "—"
     out.append(f"| `{model}` | {label}{star} | {len(b)} | {bl:.2f} "
                f"<sub>[{wb[0]:.2f},{wb[1]:.2f}]</sub> | {il:.2f} "
                f"<sub>[{wi[0]:.2f},{wi[1]:.2f}]</sub> | {d*100:+.1f} | "
-               f"[{lo*100:+.1f}, {hi*100:+.1f}] | {t.b}/{t.c} | {p:.3f} |")
+               f"[{lo*100:+.1f}, {hi*100:+.1f}] | {t.b}/{t.c} | {p:.3f} | "
+               f"{adjusted} |")
 
 fails = [f for r in rows for f in r["failures"]]
 out += ["\n### Failure composition by ordering\n",
@@ -109,7 +130,7 @@ out += ["\n### What actually goes wrong\n",
 for k, v in sub.most_common():
     out.append(f"| {k} | {v} | {v/tot_sub:.1%} |")
 if not sub.get("misattributed"):
-    out.append(f"| misattributed | 0 | 0.0% |")
+    out.append("| misattributed | 0 | 0.0% |")
     out.append("\n**Misattribution never occurred.** The taxonomy was built around it — the two "
                "task types were chosen precisely so that a grocery item appearing in a schedule "
                "would be unmissable — and it did not happen once. The failure that dominates "
@@ -129,41 +150,39 @@ else:
         kinds = _c.Counter(t.split("_")[0] for t in (row.get("expected") or {}))
         return sum(c * (c - 1) // 2 for c in kinds.values())
 
-    by_cell = _c.defaultdict(lambda: [0, 0, 0])   # events, convs, pairs
+    by_cell = _c.defaultdict(lambda: [0, 0, 0])   # entries, convs, rows
     for r in rows:
         n = r["failures"].count("misattributed")
-        rec = by_cell[(r.get("label", r["cell"]), _same_kind_pairs(r), r["n_tasks"])]
+        rec = by_cell[(r["model"], r.get("label", r["cell"]),
+                       _same_kind_pairs(r), r["n_tasks"])]
         rec[0] += n
         rec[1] += 1 if n else 0
         rec[2] += 1
     out += ["\n**Misattribution occurred, and the obvious reading of it is wrong.**\n",
-            "| condition | tasks | same-kind pairs | events | conversations affected |",
-            "|---|---:|---:|---:|---|"]
-    for (label, pairs, n_tasks), (ev, convs, tot) in sorted(
-            by_cell.items(), key=lambda kv: cell_rank(kv[0][0])):
-        out.append(f"| {label} | {n_tasks} | {pairs} | {ev} | {convs}/{tot} |")
+            "| model | condition | tasks | same-kind pairs | entries | conversations affected |",
+            "|---|---|---:|---:|---:|---|"]
+    for (model, label, pairs, n_tasks), (ev, convs, tot) in sorted(
+            by_cell.items(), key=lambda kv: (kv[0][0], cell_rank(kv[0][1]))):
+        out.append(f"| `{model}` | {label} | {n_tasks} | {pairs} | {ev} | "
+                   f"{convs}/{tot} |")
 
     by_ord = _c.defaultdict(int)
     for r in rows:
         by_ord[r["ordering"]] += r["failures"].count("misattributed")
     out.append(
-        f"\nTwo things keep this from being a clean task-count effect. First, kinds have "
-        f"disjoint vocabularies, so a same-kind pair is the *only* place a misattribution "
-        f"can occur — and under the canonical composition the pair count rises in lockstep "
-        f"with the task count. The `same_kind_2` cell breaks that collinearity: at one "
-        f"same-kind pair, raising the task count from 2 to 3 moves the event count *down*, "
-        f"while at two tasks, raising the pair count from 0 to 1 moves it from zero. "
-        f"Similarity drives misattribution; task count does not. Second, the events split "
-        f"{by_ord['blocked']} blocked / {by_ord['interleaved']} interleaved: interleaving "
-        f"amplifies the count substantially, but blocked ordering — where same-kind lists "
-        f"never interleave — still produces a large share, so interleaving is an amplifier "
-        f"rather than the cause. See docs/LIMITATIONS.md 5b.")
+        f"\nThe canonical task-count arm changes same-kind-pair count with task count. "
+        f"`same_kind_2` shows that adding a same-kind neighbour is sufficient to expose "
+        f"misattribution in this instrument and that the original monotone task-count "
+        f"explanation was not identified. These are conversation-clustered discrepancy "
+        f"entries, not independent events or a causal comparison. The entries split "
+        f"{by_ord['blocked']} blocked / {by_ord['interleaved']} interleaved; that is a "
+        f"descriptive diagnostic without an interval or test. See docs/LIMITATIONS.md 5b.")
 
 per_task, clusters = [], []
 for r in rows:
     if r["per_task_correct"]:
         for v in r["per_task_correct"].values():
-            per_task.append(v); clusters.append(r["seed"])
+            per_task.append(v); clusters.append(conversation_cluster_id(r))
 cse, nse = clustered_se(per_task, clusters), naive_se(per_task)
 drift = sum(1 for r in rows if not r.get("token_matched", True))
 parse = sum(r["parse_ok"] for r in rows)
@@ -188,24 +207,21 @@ Path("results/RESULTS.md").write_text("\n".join(out) + "\n")
 # that will be wrong, so it is generated between markers and rewritten here.
 BEGIN, END = "<!-- BEGIN:results-table -->", "<!-- END:results-table -->"
 
-compact = ["| model | condition | blocked | interleaved | delta (pp) | McNemar b/c | p |",
-           "|---|---|---:|---:|---:|---|---:|"]
-for (model, label), rs in sorted(groups.items(),
-                                 key=lambda kv: (kv[0][0], cell_rank(kv[0][1]))):
-    ok = [r for r in rs if r["parse_ok"]]
-    b, i = paired(ok)
-    if not b:
-        continue
-    stat, pv = mcnemar(b, i)
-    t = mcnemar_table(b, i)
+compact = [
+    "| model | condition | blocked | interleaved | delta (pp) | McNemar b/c | raw p | Bonferroni p |",
+    "|---|---|---:|---:|---:|---|---:|---:|",
+]
+for model, label, b, i, d_raw, _, _, t, pv in sorted(
+        estimates, key=lambda e: (e[0], cell_rank(e[1]))):
     bl, il = sum(b) / len(b), sum(i) / len(i)
-    d = (il - bl) * 100
-    name = (f"**{label} (PRIMARY)**" if label == "len_medium" and "qwen" in model
-            else f"{label} *(control)*" if label == "ctrl_1task" else label)
-    mark = "**" if pv < 0.05 else ""
+    d = d_raw * 100
+    result = inference[(model, label)]
+    name = (f"**{label} (PRIMARY)**" if result.role == "primary"
+            else f"{label} *(control)*" if result.role == "control"
+            else f"{label} *(exploratory)*")
+    adjusted = f"{result.adjusted:.3f}" if result.adjusted is not None else "—"
     compact.append(f"| `{model}` | {name} | {bl:.3f} | {il:.3f} | "
-                   f"{mark}{d:+.1f}{mark} | {t.b}/{t.c} | "
-                   f"{'**' if pv < 0.05 else ''}{pv:.3f}{'**' if pv < 0.05 else ''} |")
+                   f"{d:+.1f} | {t.b}/{t.c} | {pv:.3f} | {adjusted} |")
 
 readme = Path("README.md")
 text = readme.read_text()

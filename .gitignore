@@ -2,7 +2,6 @@
 __pycache__/
 *.pyc
 results/cache/
-results/sweep.jsonl
 results/demo.jsonl
 .pytest_cache/
 files_unzipped/

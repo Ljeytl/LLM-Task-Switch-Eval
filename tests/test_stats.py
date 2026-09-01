@@ -1,11 +1,20 @@
 """Tests for the estimators, checked against closed-form values and known properties."""
 
-import math
 
 import pytest
 
-from taskswitch.stats import (bonferroni, clustered_se, mcnemar, mcnemar_table,
-                              naive_se, paired_bootstrap, wilson)
+from taskswitch.stats import (
+    adjust_comparison_pvalues,
+    bonferroni,
+    clustered_se,
+    comparison_role,
+    conversation_cluster_id,
+    mcnemar,
+    mcnemar_table,
+    naive_se,
+    paired_bootstrap,
+    wilson,
+)
 
 
 def test_wilson_stays_inside_unit_interval_at_the_boundaries():
@@ -99,6 +108,18 @@ def test_clustered_se_approaches_naive_when_clusters_are_singletons():
     assert clustered_se(per_task, clusters) == pytest.approx(naive_se(per_task), rel=0.05)
 
 
+def test_conversation_cluster_id_does_not_merge_reused_seeds():
+    base = {"model": "m1", "label": "c1", "cell": "legacy", "seed": 1,
+            "ordering": "blocked"}
+    ids = {
+        conversation_cluster_id(base),
+        conversation_cluster_id({**base, "model": "m2"}),
+        conversation_cluster_id({**base, "label": "c2"}),
+        conversation_cluster_id({**base, "ordering": "interleaved"}),
+    }
+    assert len(ids) == 4
+
+
 def test_clustered_se_handles_degenerate_input():
     assert clustered_se([], []) == 0.0
     assert clustered_se([True], [0]) == 0.0
@@ -107,3 +128,35 @@ def test_clustered_se_handles_degenerate_input():
 def test_bonferroni_caps_at_one():
     assert bonferroni([0.5, 0.5, 0.5]) == [1.0, 1.0, 1.0]
     assert bonferroni([0.01, 0.02])[0] == pytest.approx(0.02)
+
+
+def test_comparison_roles_identify_only_the_exact_primary():
+    assert comparison_role("qwen2.5-coder:7b", "len_medium") == "primary"
+    assert comparison_role("gemma4:12b", "len_medium") == "exploratory"
+    assert comparison_role("qwen2.5-coder:7b", "ctrl_1task") == "control"
+
+
+def test_exploratory_family_adjustment_is_explicit_and_deterministic():
+    comparisons = [
+        ("qwen2.5-coder:7b", "tasks_4", 0.039),
+        ("qwen2.5-coder:7b", "len_medium", 0.50),
+        ("gemma4:12b", "ctrl_1task", 1.0),
+        ("gemma4:12b", "len_long", 0.02),
+    ]
+    forward = adjust_comparison_pvalues(comparisons)
+    reverse = adjust_comparison_pvalues(reversed(comparisons))
+    assert forward == reverse
+    tasks = forward[("qwen2.5-coder:7b", "tasks_4")]
+    assert tasks.raw == 0.039
+    assert tasks.adjusted == pytest.approx(0.078)
+    assert tasks.family_size == 2
+    assert forward[("qwen2.5-coder:7b", "len_medium")].adjusted is None
+    assert forward[("gemma4:12b", "ctrl_1task")].adjusted is None
+
+
+def test_comparison_adjustment_rejects_duplicate_keys():
+    with pytest.raises(ValueError, match="duplicate comparison"):
+        adjust_comparison_pvalues([
+            ("model", "cell", 0.1),
+            ("model", "cell", 0.2),
+        ])

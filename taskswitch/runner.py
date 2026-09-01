@@ -93,8 +93,10 @@ class FinalState(BaseModel):
                     "type": "object",
                     "properties": {"time": {"type": "string"},
                                    "title": {"type": "string"}},
-                    "required": ["time", "title"]}}
-        return {"type": "object", "properties": props, "required": list(props)}
+                    "required": ["time", "title"],
+                    "additionalProperties": False}}
+        return {"type": "object", "properties": props, "required": list(props),
+                "additionalProperties": False}
 
 
 @dataclass
@@ -138,7 +140,7 @@ def cache_key(conv: Conversation, model: ModelSpec, constrained: bool) -> str:
     return hashlib.sha256(payload.encode()).hexdigest()
 
 
-def parse_slots(raw: str) -> dict[str, Any] | None:
+def parse_slots(raw: str, tasks: list[TaskKind] | None = None) -> dict[str, Any] | None:
     """Parse a response into `{slot_key: value}` without a fixed field list.
 
     `FinalState` cannot express an arbitrary number of slots, so the slot-aware path
@@ -156,7 +158,33 @@ def parse_slots(raw: str) -> dict[str, Any] | None:
         obj = json.loads(text[start:end + 1])
     except Exception:
         return None
-    return obj if isinstance(obj, dict) else None
+    if not isinstance(obj, dict):
+        return None
+    if tasks is None:
+        return obj
+
+    expected = {
+        slot_key(task, slot): task
+        for task, slot in zip(tasks, assign_slots(tasks))
+    }
+    if set(obj) != set(expected):
+        return None
+    for key, task in expected.items():
+        value = obj[key]
+        if not isinstance(value, list):
+            return None
+        if task is TaskKind.SHOPPING:
+            if any(not isinstance(item, str) for item in value):
+                return None
+        elif any(
+            not isinstance(item, dict)
+            or set(item) != {"time", "title"}
+            or not isinstance(item["time"], str)
+            or not isinstance(item["title"], str)
+            for item in value
+        ):
+            return None
+    return obj
 
 
 def _parse(raw: str) -> FinalState | None:
@@ -219,12 +247,11 @@ def run_conversation(conv: Conversation, model: ModelSpec, constrained: bool = T
         if use_cache and not blob["error"]:
             cached.write_text(json.dumps(blob))
 
-    parsed = parse_slots(blob["content"])
+    parsed = parse_slots(blob["content"], conv.tasks)
     # Free-form answers are usually correct prose rather than JSON. A second extraction
     # pass turns them into the schema so the comparison is about tracking, not format.
     if parsed is None and extract and not constrained:
-        st = extract_state(blob["content"], conv.tasks, model, use_cache)
-        parsed = st.model_dump() if isinstance(st, FinalState) else st
+        parsed = extract_state(blob["content"], conv.tasks, model, use_cache)
     return RunResult(
         conversation=conv, model=model, raw_final=blob["content"], parsed=parsed,
         parse_ok=parsed is not None, n_retries=blob["retries"],
@@ -241,7 +268,7 @@ EXTRACT_SYSTEM = (
 
 
 def extract_state(raw: str, tasks: list[TaskKind], model: ModelSpec,
-                  use_cache: bool = True) -> FinalState | None:
+                  use_cache: bool = True) -> dict[str, Any] | None:
     """Second-pass extraction of a free-form answer into the schema.
 
     Without this, comparing constrained against free-form decoding measures the wrong
@@ -260,11 +287,12 @@ def extract_state(raw: str, tasks: list[TaskKind], model: ModelSpec,
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     key = hashlib.sha256(json.dumps(
         {"raw": raw, "model": model.name, "digest": model.digest,
+         "options": model.options, "think": model.think,
          "tasks": [t.value for t in tasks], "mode": "extract"}, sort_keys=True
     ).encode()).hexdigest()
     cached = CACHE_DIR / f"{key}.json"
     if use_cache and cached.exists():
-        return _parse(json.loads(cached.read_text())["content"])
+        return parse_slots(json.loads(cached.read_text())["content"], tasks)
     try:
         r = ollama.chat(model=model.name,
                         messages=[{"role": "system", "content": EXTRACT_SYSTEM},
@@ -276,7 +304,7 @@ def extract_state(raw: str, tasks: list[TaskKind], model: ModelSpec,
         return None
     if use_cache:
         cached.write_text(json.dumps({"content": content}))
-    return _parse(content)
+    return parse_slots(content, tasks)
 
 
 def verify_token_match(blocked: RunResult, interleaved: RunResult) -> tuple[bool, int]:

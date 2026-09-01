@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
-"""What effect size can this design actually detect, at the n it was run at?
+"""Observed-data sensitivity analysis at the sample size that was run.
 
-Answering "is this n enough?" with a simulation rather than a hedge. Uses the discordance
-rate observed in the real data, because McNemar's power depends on it and an assumed
-rate would be guessing at the thing that matters most.
+This is post-hoc and descriptive, not prospective design power. It uses a rough mean
+discordance rate across heterogeneous observed cells because McNemar sensitivity depends
+on discordance; the result should guide a future power analysis, not justify this sweep.
 """
 from __future__ import annotations
 
-import collections, json, sys
+import collections
+import json
+import sys
 from pathlib import Path
 
 import numpy as np
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from taskswitch.stats import mcnemar, mcnemar_table
 
@@ -51,9 +54,10 @@ for (m, c), d in sorted(by.items(), key=_rank):
 rate = float(np.mean(disc_rates)) if disc_rates else 0.25
 print(f"\nMean discordance across non-control cells: **{rate:.0%}**\n")
 
-print("## Power\n")
+print("## Observed-data sensitivity\n")
 print(f"Simulated, exact McNemar, alpha = 0.05, discordance {rate:.0%}, "
-      "400 replicates per cell.\n")
+      "5,000 replicates per cell. This plugs a mean across heterogeneous observed cells "
+      "into a simplified model; it is not prospective design power.\n")
 rng = np.random.default_rng(0)
 # 25 is the n the sweep ACTUALLY ran. The grid opened at 30 -- a value no cell used --
 # so every power figure quoted from this table was for a sample larger than the one that
@@ -67,13 +71,13 @@ for split in (0.65, 0.75, 0.85):
     row_effect = (2 * split - 1) * rate * 100
     for n in ns:
         hits = 0
-        for _ in range(400):
+        for _ in range(5000):
             d = rng.binomial(n, rate)
             b = rng.binomial(d, split)
             bl = [True] * b + [False] * (d - b) + [True] * (n - d)
             il = [False] * b + [True] * (d - b) + [True] * (n - d)
             hits += mcnemar(bl, il)[1] < 0.05
-        cells.append(f"{hits/400:.0%}")
+        cells.append(f"{hits/5000:.0%}")
     print(f"| {row_effect:.1f} pp | " + " | ".join(cells) + " |")
     sweep_power[round(row_effect, 1)] = cells[0]
 
@@ -84,5 +88,5 @@ mid = sorted(sweep_power)[len(sweep_power) // 2]
 print(f"\n**Read this before reading any null in the results.** At the n={ns[0]} per cell "
       f"this sweep actually ran, the design has")
 print(f"roughly {sweep_power[mid]} power against an {mid:.0f}-point effect. "
-      f"A non-significant cell is evidence")
-print("of insufficient sample, not evidence of no effect.")
+      f"A non-significant cell is therefore inconclusive at this sample size; it is not "
+      f"evidence of no effect.")

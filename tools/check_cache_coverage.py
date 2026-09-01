@@ -22,7 +22,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from run import resolve_tasks                                   # noqa: E402
 from taskswitch.generator import build_pair                     # noqa: E402
-from taskswitch.runner import CACHE_DIR, cache_key, resolve_model  # noqa: E402
+from taskswitch.runner import CACHE_DIR, ModelSpec, cache_key  # noqa: E402
+
+
+def expected_cache_key(row: dict) -> str:
+    tasks = resolve_tasks(row.get("tasks") or row["n_tasks"])
+    pair = build_pair(row["seed"], tasks, row["n_ops"], row["n_false"], row["n_noise"])
+    conv = pair[0] if row["ordering"] == "blocked" else pair[1]
+    model = ModelSpec(name=row["model"], digest=row.get("digest", ""))
+    return cache_key(conv, model, row.get("constrained", True))
 
 
 def main() -> int:
@@ -31,14 +39,9 @@ def main() -> int:
         print(f"no {src}", file=sys.stderr)
         return 1
     rows = [json.loads(ln) for ln in src.read_text().splitlines() if ln.strip()]
-    models = {name: resolve_model(name) for name in {r["model"] for r in rows}}
-
     keys, missing = set(), Counter()
     for r in rows:
-        tasks = resolve_tasks(r.get("tasks") or r["n_tasks"])
-        pair = build_pair(r["seed"], tasks, r["n_ops"], r["n_false"], r["n_noise"])
-        conv = pair[0] if r["ordering"] == "blocked" else pair[1]
-        key = cache_key(conv, models[r["model"]], r.get("constrained", True))
+        key = expected_cache_key(r)
         keys.add(key)
         if not (CACHE_DIR / f"{key}.json").exists():
             missing[(r["model"], r.get("label") or r["cell"])] += 1

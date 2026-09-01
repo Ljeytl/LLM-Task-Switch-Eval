@@ -19,7 +19,7 @@ models:
 
 num_ctx: 16384      # constant across every cell: per-condition sizing would change the
                     # model's setup between cells and invalidate the comparison
-n_pairs: 25         # see docs/LIMITATIONS.md 9 -- underpowered below ~120; stated, not hidden
+n_pairs: 25         # see docs/LIMITATIONS.md 9 -- modest effects are unresolved at this n
 n_false: 2
 seed0: 1
 
@@ -30,7 +30,7 @@ cells:
   - {label: "ctrl_1task",  n_tasks: 1, n_ops: 6, n_noise: 40}
   # --- length arm: 2 tasks, padding varies (now NESTED -- see LIMITATIONS 4b) ---------
   - {label: "len_short",   n_tasks: 2, n_ops: 6, n_noise: 0}
-  - {label: "len_medium",  n_tasks: 2, n_ops: 6, n_noise: 40}   # <-- PRIMARY (pre-registered)
+  - {label: "len_medium",  n_tasks: 2, n_ops: 6, n_noise: 40}   # <-- PRIMARY (repo-prespecified)
   - {label: "len_long",    n_tasks: 2, n_ops: 6, n_noise: 120}
   # --- task-count arm: length fixed at medium, live-state count varies ----------------
   # NEW IN v2. This is the question the project set out to ask.
@@ -38,13 +38,12 @@ cells:
   - {label: "tasks_4",     n_tasks: 4, n_ops: 6, n_noise: 40}
   # (tasks_2 at medium length is len_medium -- the shared corner of the L)
   # --- similarity probe: two tasks, but BOTH shopping ---------------------------------
-  # Disentangles the task-count arm's confound (LIMITATIONS.md 5b). Under the canonical
-  # composition the number of SAME-KIND pairs -- the only pairs misattribution can occur
-  # between, since kinds have disjoint vocabularies -- rises in lockstep with task count:
+  # Probes the task-count arm's confound (LIMITATIONS.md 5b). Under the canonical
+  # composition the number of SAME-KIND pairs rises in lockstep with task count:
   #     tasks    1   2   3   4
   #     pairs    0   0   1   2
   #     misattr  0   0   8  59   (qwen2.5-coder:7b)
   # so "more tasks" and "a confusable neighbour" cannot be told apart. This cell holds
-  # task count at 2 and raises same-kind pairs to 1. Misattribution here means similarity
-  # drives it and the count is incidental; none means the count matters independently.
+  # task count at 2 and raises same-kind pairs to 1, but also changes mechanics and
+  # exposure; it is a diagnostic probe, not an isolated similarity effect.
   - {label: "same_kind_2", tasks: [shopping, shopping], n_ops: 6, n_noise: 40}

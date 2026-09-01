@@ -18,15 +18,16 @@ can this model hold, and what does switching between them cost me?**
 | LoCoMo, LongMemEval | Long-term recall of one thread | One thread |
 | **GoodAI LTM** (NeurIPS 2024) | Interleaved concurrent tasks | Closest prior art — but varies interleaving *and* context length together |
 
-The claim here is deliberately narrow, and it is worth stating precisely because the
-overstated version is easy to puncture. It is **not** that nothing measures
-interleaving — GoodAI LTM does, and found that it hurts. It is that no existing work
-**isolates** the cost of switching from the cost of a longer context. That is the gap.
+The intended contribution is deliberately narrow. GoodAI LTM already measures
+interleaved concurrent tasks and finds that they are harder. This project builds a
+mechanically graded paired instrument whose two arms contain the same rendered strings
+and matched token counts. The current run is a prototype, not a novelty or causal-isolation
+claim: fixed task order still leaves serial position and recency unresolved.
 
 ## What this measures
 
-Given N concurrent stateful tasks in one conversation, the accuracy cost attributable
-to **interleaving**, holding token count constant.
+Given N concurrent stateful tasks in one conversation, the accuracy difference between
+blocked and interleaved orderings while holding operation content and token count fixed.
 
 ### The manipulation
 
@@ -35,9 +36,10 @@ One operation sequence, two orderings:
 - **Blocked** — all task-1 operations, then all task-2, then all task-3
 - **Interleaved** — round-robin across tasks
 
-Identical operations. Identical token count, *asserted by construction and verified at
-run time* against the model's own `prompt_eval_count`. Only the ordering differs, so
-any accuracy delta is switch and re-entry cost, not context bloat.
+Identical operations. Identical token count, asserted by construction and verified at
+run time against the model's own `prompt_eval_count`. The delta is an ordering effect,
+not context bloat. Counterbalancing task order and update recency is still required
+before attributing it solely to switching and re-entry.
 
 ### Crossing rather than holding fixed
 
@@ -47,8 +49,8 @@ arm and a task-count arm sharing a corner — so the result is not a single numb
 shape: does switch cost grow with the amount of surrounding context, or with the number
 of live states?
 
-A flat length result would itself be informative: it would mean switch cost tracks how
-many states are live, not how far apart their mentions are.
+A flat length pattern would motivate the hypothesis that the ordering effect tracks live
+state rather than distance. At this sample size it would not establish that interaction.
 
 ### Secondary probe
 
@@ -104,25 +106,26 @@ readings were available and it had no way to separate them: either models do not
 operations across tasks, or two tasks of very different kinds are simply too dissimilar
 to confuse.
 
-v2's task-count arm settles it. `tasks_3` is the first condition containing **two lists
-of the same kind** — a grocery list and a hardware list, with disjoint vocabularies so a
-confusion is unmistakable:
+v2's task-count arm probes it. For qwen, `tasks_3` is the first canonical condition
+containing **two lists of the same kind** — a grocery list and a hardware list, with
+disjoint vocabularies so a confusion is unmistakable:
 
 | cell | same-kind pair? | conversations | misattribution events |
 |---|---|---:|---:|
-| 2-task cells (shopping + schedule) | no | 300 | **0** |
+| qwen 2-task different-kind cells | no | 150 | **0** |
 | `tasks_3` (2 shopping + 1 schedule) | yes | 50 | **8** |
 
 Every event is `shopping_0` ↔ `shopping_1`: grocery items landing on the hardware list.
 None cross between a list and a calendar.
 
-So the v1 zero was a property of the **instrument**, not of the models. Misattribution
-does happen; it needs two tasks similar enough to confuse. A benchmark built only from
-dissimilar task types would report that models never misfile, and would be wrong.
+So the v1 zero was not evidence that the models never misfile. A same-kind neighbour was
+sufficient to expose misattribution here. That does not establish that similarity is
+necessary or isolate it from changed task mechanics.
 
 ## What this does not show
 
-One synthetic domain with templated turns is not a benchmark. It is an existence proof
-that switch cost is separable from context length and mechanically measurable.
-Generalisation to real conversations is untested. See `LIMITATIONS.md`, which is
-deliberately longer than this section.
+One synthetic domain with templated turns is not a benchmark. It is a prototype showing
+that a matched-token ordering effect is mechanically measurable. Fixed blocked-task order
+still confounds that effect with serial position and recency, and generalisation to real
+conversations is untested. See `LIMITATIONS.md`, which is deliberately longer than this
+section.

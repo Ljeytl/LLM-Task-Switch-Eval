@@ -21,13 +21,29 @@ from typing import Any
 import yaml
 from tqdm import tqdm
 
-from taskswitch.generator import Ordering, build_pair
+from taskswitch.generator import build_pair
 from taskswitch.ops import TaskKind, default_tasks
 from taskswitch.plots import dumbbell, taxonomy_bars
-from taskswitch.runner import ModelSpec, resolve_model, run_conversation, verify_token_match
+from taskswitch.runner import (
+    CACHE_DIR,
+    ModelSpec,
+    RunResult,
+    cache_key,
+    parse_slots,
+    resolve_model,
+    run_conversation,
+    verify_token_match,
+)
 from taskswitch.scorer import score
-from taskswitch.stats import (bonferroni, clustered_se, mcnemar, mcnemar_table, naive_se,
-                              paired_bootstrap, wilson)
+from taskswitch.stats import (
+    adjust_comparison_pvalues,
+    clustered_se,
+    conversation_cluster_id,
+    mcnemar,
+    mcnemar_table,
+    naive_se,
+    paired_bootstrap,
+)
 
 RESULTS = Path("results")
 
@@ -263,39 +279,49 @@ def cmd_sweep(args) -> None:
 
 def analyse(rows: list[dict]) -> None:
     """Per-condition estimates, the paired test, and the plots."""
-    print("\n" + "=" * 96)
-    print(f"{'model':<20}{'cell':<16}{'n':>5}{'blocked':>10}{'inter':>10}"
-          f"{'delta pp':>10}{'95% CI':>18}{'p':>9}")
-    print("-" * 96)
+    print("\n" + "=" * 126)
+    print(f"{'model':<20}{'cell':<16}{'role':<13}{'n':>5}{'blocked':>10}{'inter':>10}"
+          f"{'delta pp':>10}{'95% CI':>18}{'raw p':>10}{'Bonf p':>10}")
+    print("-" * 126)
     # Exclude pairs whose two orderings did not tokenise identically. Such a pair is
     # not a valid comparison -- it compares two different-length conversations -- so it
     # is reported in the drift counter and dropped here rather than quietly averaged in.
     usable = [r for r in rows if r.get("token_matched", True)]
     groups: dict[tuple[str, str], list[dict]] = defaultdict(list)
     for r in usable:
-        groups[(r["model"], r["cell"])].append(r)
+        groups[(r["model"], r.get("label") or r["cell"])].append(r)
 
-    secondary_p = []
-    for (model, cell), rs in sorted(groups.items()):
+    estimates = []
+    for (model, label), rs in sorted(groups.items()):
         b, i = paired_arrays([r for r in rs if r["parse_ok"]])
         if not b:
             continue
-        stat, p = mcnemar(b, i)
+        _, p = mcnemar(b, i)
         d, lo, hi = paired_bootstrap(b, i, n_boot=10000, seed=0)
         t = mcnemar_table(b, i)
-        print(f"{model.split(':')[0]:<20}{cell:<16}{len(b):>5}"
-              f"{sum(b)/len(b):>10.3f}{sum(i)/len(i):>10.3f}"
-              f"{d*100:>+10.1f}{f'[{lo*100:+.1f},{hi*100:+.1f}]':>18}{p:>9.4f}")
-        secondary_p.append(p)
+        estimates.append((model, label, b, i, d, lo, hi, t, p))
 
-    print("-" * 96)
+    inference = adjust_comparison_pvalues(
+        (model, label, p) for model, label, *_, p in estimates)
+    for model, label, b, i, d, lo, hi, t, p in estimates:
+        result = inference[(model, label)]
+        adjusted = f"{result.adjusted:.4f}" if result.adjusted is not None else "--"
+        print(f"{model.split(':')[0]:<20}{label:<16}{result.role:<13}{len(b):>5}"
+              f"{sum(b)/len(b):>10.3f}{sum(i)/len(i):>10.3f}"
+              f"{d*100:>+10.1f}{f'[{lo*100:+.1f},{hi*100:+.1f}]':>18}"
+              f"{p:>10.4f}{adjusted:>10}")
+
+    family_size = max((v.family_size for v in inference.values()), default=0)
+    print(f"Exploratory Bonferroni family: m={family_size}; primary is reported raw; "
+          "negative controls are outside the inferential family.")
+    print("-" * 126)
     # Per-task accuracy with SEs clustered on conversation, plus the naive SE for
     # contrast -- the gap is the reason clustering is not optional here.
     per_task, clusters = [], []
     for r in rows:
         if r["per_task_correct"]:
             for v in r["per_task_correct"].values():
-                per_task.append(v); clusters.append(r["seed"])
+                per_task.append(v); clusters.append(conversation_cluster_id(r))
     if per_task:
         cse, nse = clustered_se(per_task, clusters), naive_se(per_task)
         ratio = cse / max(nse, 1e-9)
@@ -335,14 +361,50 @@ def cmd_rescore(args) -> None:
     """
     src = Path(args.results)
     rows = read_jsonl(src)
-    models = {name: resolve_model(name) for name in {r["model"] for r in rows}}
-    out = []
-    for r in tqdm(rows, desc="rescore", file=sys.stderr):
-        # Prefer the recorded composition; fall back for rows written before it existed.
+    prepared = []
+    missing = []
+    invalid = []
+    for r in rows:
+        model = ModelSpec(name=r["model"], digest=r.get("digest", ""))
         tasks = resolve_tasks(r.get("tasks") or r["n_tasks"])
         pair = build_pair(r["seed"], tasks, r["n_ops"], r["n_false"], r["n_noise"])
         conv = pair[0] if r["ordering"] == "blocked" else pair[1]
-        res = run_conversation(conv, models[r["model"]], r.get("constrained", True))
+        path = CACHE_DIR / f"{cache_key(conv, model, r.get('constrained', True))}.json"
+        if not path.exists():
+            missing.append(path)
+            continue
+        try:
+            blob = json.loads(path.read_text())
+            if not isinstance(blob, dict):
+                raise TypeError("cache entry is not an object")
+            for field in ("content", "prompt_eval_count", "eval_count", "wall",
+                          "retries", "error"):
+                if field not in blob:
+                    raise KeyError(field)
+        except (OSError, ValueError, TypeError, KeyError) as exc:
+            invalid.append((path, exc))
+            continue
+        prepared.append((r, conv, model, blob))
+
+    if missing or invalid:
+        details = []
+        if missing:
+            details.append(f"{len(missing)} missing")
+        if invalid:
+            details.append(f"{len(invalid)} invalid")
+        raise SystemExit("rescore aborted before writing: cache preflight found "
+                         + " and ".join(details))
+
+    out = []
+    for r, conv, model, blob in tqdm(prepared, desc="rescore", file=sys.stderr):
+        parsed = parse_slots(blob["content"], conv.tasks)
+        res = RunResult(
+            conversation=conv, model=model, raw_final=blob["content"], parsed=parsed,
+            parse_ok=parsed is not None, n_retries=blob["retries"],
+            wall_seconds=blob["wall"], prompt_tokens=blob["prompt_eval_count"],
+            eval_tokens=blob["eval_count"], constrained=r.get("constrained", True),
+            error=blob["error"],
+        )
         new = row_of(res, score(res), {"token_matched": r.get("token_matched", True),
                                        "token_delta": r.get("token_delta", 0)})
         new["label"] = r.get("label", "")

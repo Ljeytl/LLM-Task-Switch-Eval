@@ -9,8 +9,16 @@ import pytest
 
 from taskswitch.generator import build_pair
 from taskswitch.ops import TaskKind, assign_slots, slot_key
-from taskswitch.runner import (ACK, FinalState, ModelSpec, build_messages, cache_key,
-                               parse_slots, verify_token_match, RunResult)
+from taskswitch.runner import (
+    ACK,
+    FinalState,
+    ModelSpec,
+    RunResult,
+    build_messages,
+    cache_key,
+    parse_slots,
+    verify_token_match,
+)
 
 T2 = [TaskKind.SHOPPING, TaskKind.SCHEDULE]
 T4 = [TaskKind.SHOPPING, TaskKind.SCHEDULE, TaskKind.SHOPPING, TaskKind.SCHEDULE]
@@ -75,10 +83,12 @@ def test_cache_key_changes_with_generation_params():
 
 @pytest.mark.parametrize("tasks", [T2, T4, [TaskKind.SHOPPING], [TaskKind.SCHEDULE]])
 def test_schema_has_one_field_per_slot(tasks):
-    props = FinalState.schema_for(tasks)["properties"]
+    schema = FinalState.schema_for(tasks)
+    props = schema["properties"]
     expected = [slot_key(t, s) for t, s in zip(tasks, assign_slots(tasks))]
     assert list(props) == expected
-    assert FinalState.schema_for(tasks)["required"] == expected
+    assert schema["required"] == expected
+    assert schema["additionalProperties"] is False
 
 
 def test_schema_never_asks_for_an_untracked_slot():
@@ -93,6 +103,7 @@ def test_schedule_schema_uses_named_keys_not_positional_pairs():
     item = FinalState.schema_for(T2)["properties"]["schedule_0"]["items"]
     assert item["type"] == "object"
     assert sorted(item["required"]) == ["time", "title"]
+    assert item["additionalProperties"] is False
 
 
 # --- parsing -------------------------------------------------------------------------
@@ -118,6 +129,27 @@ def test_parse_slots_accepts_arbitrary_slot_names():
     """FinalState cannot express N slots, which is why the slot path uses a plain dict."""
     got = parse_slots('{"shopping_0":["a"],"shopping_1":["b"],"schedule_0":[]}')
     assert set(got) == {"shopping_0", "shopping_1", "schedule_0"}
+
+
+def test_parse_slots_validates_the_requested_task_schema():
+    raw = ('{"shopping_0":["milk"],'
+           '"schedule_0":[{"time":"09:00","title":"standup"}]}')
+    assert parse_slots(raw, T2) is not None
+
+
+@pytest.mark.parametrize("raw", [
+    '{"shopping_0":["milk"]}',
+    ('{"shopping_0":["milk"],"schedule_0":[],'
+     '"shopping_1":[]}'),
+    '{"shopping_0":"milk","schedule_0":[]}',
+    '{"shopping_0":[1],"schedule_0":[]}',
+    '{"shopping_0":[],"schedule_0":[{"time":"09:00"}]}',
+    ('{"shopping_0":[],"schedule_0":['
+     '{"time":"09:00","title":"standup","room":"1A"}]}'),
+    '{"shopping_0":[],"schedule_0":[{"time":900,"title":"standup"}]}',
+])
+def test_parse_slots_rejects_schema_violations(raw):
+    assert parse_slots(raw, T2) is None
 
 
 # --- token verification --------------------------------------------------------------

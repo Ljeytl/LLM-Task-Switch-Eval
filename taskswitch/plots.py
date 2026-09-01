@@ -1,4 +1,4 @@
-"""Figures. The dumbbell is the primary chart: its slope IS the switch cost."""
+"""Figures for the matched-token ordering deltas and failure taxonomy."""
 
 from __future__ import annotations
 
@@ -30,8 +30,8 @@ def _same_kind_pairs(row: dict[str, Any]) -> int:
 
     Derived from the ground-truth keys (`shopping_0`, `shopping_1`, ...) rather than
     stored, so it is correct for rows written before compositions were configurable.
-    Same-kind pairs are the only place a misattribution can occur, since different kinds
-    draw from disjoint vocabularies.
+    Same-kind pairs make cross-slot misattribution easier to expose because different
+    kinds draw from disjoint vocabularies.
     """
     kinds: dict[str, int] = defaultdict(int)
     for slot in (row.get("expected") or {}):

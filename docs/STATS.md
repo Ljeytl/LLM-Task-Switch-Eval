@@ -110,6 +110,11 @@ Resampling the arms independently would discard the pairing and inflate the inte
 Resampling *tasks* rather than conversations would treat non-independent observations
 as independent — the error described next.
 
+This is a simple percentile interval. With n=25 and very few discordant pairs it can be
+non-consonant with the exact McNemar test—for example, an interval may exclude zero while
+the exact p-value remains above 0.05. The interval is therefore reported as an
+exploratory effect-size summary, not an exact-test confidence set.
+
 ---
 
 ## 5. Clustered standard errors
@@ -142,14 +147,15 @@ matters.
 
 ## 6. Multiple comparisons
 
-The **primary comparison is pre-registered**: 2 tasks, medium length,
-`qwen2.5-coder:7b`, joint goal accuracy, McNemar. It is reported uncorrected, because a
-single pre-specified test needs no correction.
+The **primary comparison was prespecified in the repository before the v2 sweep**: 2
+tasks, medium length, `qwen2.5-coder:7b`, joint goal accuracy, McNemar. There was no
+external registration. It is reported uncorrected because it is one prespecified test.
 
-Every other cell is labelled secondary and exploratory. `bonferroni()` is available and
-applied to that family, noted as conservative. Pre-registering one comparison is
-cleaner and more honest than running several and correcting across all of them — the
-correction cannot undo the fact that the hypothesis was chosen after seeing the data.
+The one-task negative controls are validation checks outside the inferential family. The
+remaining 11 model-condition comparisons are secondary and exploratory. Both raw and
+Bonferroni-adjusted p-values are reported; the smallest raw value, 0.039 for qwen
+`tasks_4`, adjusts to 0.430. Correction does not turn an exploratory hypothesis into a
+confirmatory one.
 
 ---
 
@@ -170,18 +176,18 @@ only and records `parse_ok=False` immediately.
 
 ---
 
-## 8. Power, computed rather than assumed
+## 8. Observed-data sensitivity, not prospective power
 
-`tools/power_analysis.py` simulates the design's power using the discordance rate
-**observed in the real data**, not an assumed one. That distinction matters: McNemar's
-power is driven almost entirely by the discordant count, since concordant pairs carry no
-information about ordering. Assuming a discordance rate would be guessing at exactly the
-quantity the answer depends on.
+`tools/power_analysis.py` simulates sensitivity using the mean discordance rate observed
+across heterogeneous cells. McNemar sensitivity is driven by the discordant count, since
+concordant pairs carry no information about ordering. Because this assumption comes from
+the analyzed data, the output is post-hoc guidance for future design, not prospective
+power for this sweep.
 
 The result (`results/POWER.md`) is that **n=25** per cell — the sweep's actual size — has
-roughly 3% power against a 7-point effect and 9% against an 11-point one. **Every null in
-this project should be read through that table**, and the write-up says so rather than
-letting a non-significant p-value imply an absence of effect.
+roughly 4% power against a 7-point effect and 9% against an 11-point one. **Every
+non-significant result in this project should be read through that table**: it is
+inconclusive at this sample size, not evidence of no effect.
 
 This also explains the shape of the primary cell's null: b=6, c=3. The design did detect
 interleaving changing outcomes on nine of twenty-five conversations — it simply changed
