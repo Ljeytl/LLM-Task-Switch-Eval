@@ -8,7 +8,29 @@ lengths and four task counts to see what the cost actually scales with.
 > **Status:** research prototype. Findings are an existence proof on one synthetic
 > domain, not a benchmark. See [Limitations](docs/LIMITATIONS.md).
 
-**Headline (v2).** v1 found **zero misattribution in 480 conversations** and could not
+**Headline (v2).** Switch cost scales with **how many tasks are live**, not with how much
+context separates their mentions. On `qwen2.5-coder:7b`, at a fixed token count and a
+fixed total number of operations:
+
+| live tasks | delta | 95% CI | p | misattribution events |
+|---:|---:|---|---:|---:|
+| 2 | −12.0pp | [−36.0, +12.0] | 0.508 | 0 |
+| 3 | −20.0pp | [−36.0, −4.0] | 0.063 | 8 |
+| 4 | **−28.0pp** | [−48.0, −8.0] | **0.039** | 59 |
+
+| context padding | delta | 95% CI | p |
+|---:|---:|---|---:|
+| 0 noise turns | −16.0pp | [−36.0, +0.0] | 0.219 |
+| 40 noise turns | −12.0pp | [−36.0, +12.0] | 0.508 |
+| 120 noise turns | −12.0pp | [−36.0, +12.0] | 0.508 |
+
+One arm is monotone, the other is flat. Read as *exploratory* — the pre-registered
+primary is the 2-task cell and it is null, individual cells are underpowered at n=25, and
+the trend rather than any single cell is the signal. But the dissociation is the shape the
+crossed design was built to detect, and it is the opposite of what a context-length
+explanation predicts.
+
+**Headline (v2, mechanism).** v1 found **zero misattribution in 480 conversations** and could not
 say whether models simply do not misfile, or whether a shopping list and a calendar are
 too dissimilar to confuse. v2 answers it: put **two lists of the same kind** in one
 conversation and misattribution appears immediately — 8 events in 50 conversations,

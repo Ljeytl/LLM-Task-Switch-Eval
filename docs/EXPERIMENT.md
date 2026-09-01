@@ -131,3 +131,34 @@ fictitious switch cost.
 The lesson generalises past this bug: an ambiguous measurement instrument is not merely
 noisy. If the ambiguity resolves differently under different conditions, it becomes a
 **systematic** effect pointing in whatever direction the ambiguity happens to lean.
+
+
+---
+
+## What the two arms showed
+
+The point of crossing interleaving with *both* factors was that a single number cannot
+tell you what switch cost is made of. The two arms came apart cleanly on
+`qwen2.5-coder:7b`:
+
+```
+task count   2 -> 3 -> 4 tasks     delta  -12.0  -20.0  -28.0 pp    monotone
+context      0 -> 40 -> 120 noise  delta  -16.0  -12.0  -12.0 pp    flat
+```
+
+Both arms hold `n_ops = 6` and both are token-matched within every cell. The task-count
+arm *reduces* operations per task as it adds tasks (6 ops split three ways instead of
+two), so the growing cost cannot be "more work" — each individual list got shorter.
+
+**The honest caveats, in order of importance:**
+
+1. The **pre-registered primary is the 2-task cell** and it is null (−12.0pp, p=0.508).
+   The task-count arm is exploratory. Promoting it to the headline because it produced a
+   trend is exactly the practice pre-registration prevents; it is reported as a
+   hypothesis worth confirming at higher n, not as a result.
+2. At n=25 only `tasks_4` reaches p < 0.05. `results/POWER.md` puts power at roughly 6%
+   for an 8-point effect. The **trend across cells** is the signal, not any single cell.
+3. Task count and ops-per-task move inversely (§4c), so the claim is "splitting fixed
+   work across more live states costs accuracy", not "adding a task costs accuracy".
+4. The length arm being flat is a null at low power. It is consistent with "context
+   length does not drive switch cost" but does not establish it.
