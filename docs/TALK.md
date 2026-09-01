@@ -54,14 +54,24 @@ length arm was silently varying the operations too. Same class of confound the p
 exists to remove, one level down, in my own generator. Caught by a test that asserted
 the invariant rather than the output.
 
-**The task-count arm was undeliverable (the honest one).** Half the planned design was
-2/3/4 concurrent tasks. Task identity is `TaskKind` and there are only two kinds, so
-"3 tasks" resolved to `[shopping, schedule, shopping]` — the duplicate merged into the
-first list's state, and blocked ordering emitted its turns twice. The token-match
-assertion caught it. I cut it rather than refactor six modules mid-run, **so the
-headline question the project set out to ask — how many live tasks can a model hold —
-is not answered here.** Say that plainly; it is the biggest gap in the work and trying
-to talk around it would be worse than owning it.
+**The task-count arm: cut, then rebuilt (the one that shows judgement changing).** Half
+the planned design was 2/3/4 concurrent tasks. Task identity was `TaskKind` and only two
+kinds existed, so "3 tasks" resolved to `[shopping, schedule, shopping]` — the duplicate
+merged into the first list's state and blocked ordering emitted its turns twice. The
+token-match assertion caught it. I cut it rather than refactor six modules mid-run and
+shipped v1 without it.
+
+Then I rebuilt it. Task identity became a **slot**, and — the part that actually matters
+— each slot got its own **disjoint vocabulary**. The original design's diagnostic power
+came from using two different *kinds*, so a grocery item in a calendar was unmistakable;
+two generic lists would have destroyed that, and my own limitations doc said so. Naming
+the instances preserves the property while lifting the cap.
+
+The tail on this one is the better story: I lifted the cap in the library, left a stale
+guard in the CLI, and the sweep crashed on the first task-count cell. **543 green tests
+and a broken entry point**, because every test called `build_pair` directly and nothing
+exercised `tasks_for`. The guard's error message even cited D14, which D17 had already
+reversed — a stale assertion is worse than none, because it reads as deliberate.
 
 **The audit that was wrong twice (the one about method).** I wrote a checker that
 verifies every emitted failure against the actual diff. It disagreed with the scorer
@@ -117,11 +127,13 @@ Because I measured it. The difficulty curve for qwen2.5-coder:7b runs 0.62 / 0.3
 calibration step exists precisely to catch that, and it did.
 
 **What happens at 4 tasks?**
-I do not know, and the honest answer is that I could not measure it. Task identity is
-`TaskKind` with two kinds, so a third task repeated one and merged into its state — the
-arm was degenerate and I cut it rather than refactor six modules mid-run. Doing it
-properly needs per-instance identity, two separately named shopping lists, which is the
-first item of next work. It is the biggest gap in the project.
+v1 could not measure it; v2 can. Task identity is now a slot with a disjoint vocabulary
+per instance, so four concurrent tasks are four independent states and misattribution
+between two same-kind lists is detectable. Be precise about what the arm asks though:
+`n_ops` is *total*, so fewer tasks means more ops per task. It measures splitting a fixed
+amount of work across more live states at a fixed token count — not the marginal cost of
+adding a task. That is the unavoidable price of not re-confounding task count with
+conversation length.
 
 **Would this transfer to a real product conversation?**
 Unknown, and I do not claim it. This is an existence proof that switch cost is

@@ -145,9 +145,11 @@ finding about context padding from the qwen data alone; it is not general.
 
 Misattribution was the failure this design was built to detect — the two task types were
 chosen so a grocery item in a schedule would be unmissable. It occurred **zero times in
-480 conversations**. Whether that means models do not misfile across dissimilar tasks, or
-that two tasks is too few for misfiling to arise, this run cannot say: the task-count arm
-that would separate them was cut ([D14](docs/DECISIONS.md)).
+480 conversations** in v1, which could not say whether models simply do not misfile across
+dissimilar tasks or whether two tasks was too few for misfiling to arise. v2 can
+distinguish these: it runs three and four concurrent tasks, including two lists of the
+*same kind* with disjoint vocabularies, so `screws` on the grocery list is as unmistakable
+as `milk` in a calendar ([D17](docs/DECISIONS.md)).
 
 ## The most important decisions
 
@@ -185,17 +187,19 @@ Three things I got wrong and had to fix:
    stream. The same class of confound this project exists to remove, one level down, in
    my own generator. Caught by a test that asserted the invariant rather than the output.
 
-3. **The task-count arm was silently degenerate, and got cut.** The design called for
-   2/3/4 concurrent tasks. But task identity is `TaskKind` and there are only two kinds,
-   so "3 tasks" resolved to `[shopping, schedule, shopping]` — the duplicate merged into
-   the first list's state, and blocked ordering emitted its turns twice. The
-   token-match assertion caught it. Fixing it properly needs per-instance task identity
-   (two separately named shopping lists), a refactor across six modules that also
-   invalidates the response cache — and by this project's own analysis it is the
-   *weaker* half of the design, since two same-type tasks make misattribution nearly
-   undetectable. **So the "how many tasks can it hold?" question is not answered here.**
-   It was replaced with a 1-task negative control, where the delta must be exactly zero
-   by construction. See [D14](docs/DECISIONS.md).
+3. **The task-count arm was silently degenerate — cut in v1, rebuilt in v2.** The design
+   called for 2/3/4 concurrent tasks, but task identity was `TaskKind` and only two kinds
+   existed, so "3 tasks" resolved to `[shopping, schedule, shopping]` — the duplicate
+   merged into the first list's state and blocked ordering emitted its turns twice. The
+   token-match assertion caught it and v1 shipped without the arm
+   ([D14](docs/DECISIONS.md)).
+
+   v2 rebuilds it properly: task identity is a **slot**, and each slot draws from a
+   disjoint vocabulary, so two shopping lists stay distinguishable
+   ([D17](docs/DECISIONS.md)). One further trap on the way — the library cap was lifted
+   but a stale guard survived in `run.py`, so 538 green tests coexisted with a crashing
+   entry point. The tests called `build_pair` directly and nothing exercised the CLI's
+   task construction.
 
 4. **The planned difficulty was on the floor.** The design called for `n_ops=24`.
    Measured difficulty curve for `qwen2.5-coder:7b` at 2 tasks:
@@ -262,8 +266,11 @@ Summarised here, in full at [`docs/LIMITATIONS.md`](docs/LIMITATIONS.md).
 1. **This measures extraction, not live tracking.** Prefilled acks remove the model's
    own replies, which in a real deployment may act as a scratchpad.
 2. One synthetic domain, templated turns. No generalisation claim.
-3. **No task-count result.** The 2/3/4-task arm was cut (D14); only 2 tasks are
-   measured.
+3. **The task-count arm measures a narrower question than its name suggests.** Because
+   `n_ops` is total per conversation, fewer tasks means *more operations per task* — the
+   1-task control is one six-item list, not an easier condition. The arm asks "at fixed
+   total work and fixed tokens, does splitting across more live states cost you?", not
+   "does adding a task hurt?" See [LIMITATIONS §4c](docs/LIMITATIONS.md).
 4. Cross-model comparison is **descriptive only** — the two models differ in family,
    tuning and size simultaneously. There is no scaling ladder.
 5. The length arm confounds context length with distraction, since padding is what

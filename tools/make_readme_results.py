@@ -100,11 +100,12 @@ if not sub.get("misattributed"):
     out.append("\n**Misattribution never occurred.** The taxonomy was built around it — the two "
                "task types were chosen precisely so that a grocery item appearing in a schedule "
                "would be unmissable — and it did not happen once. The failure that dominates "
-               "instead is absorbing content the user explicitly negated. Read with care: with "
-               "only two tasks of very different types, this may mean models do not misfile "
-               "across dissimilar tasks, or it may mean two tasks is too few for misfiling to "
-               "arise. The task-count arm that would separate those was cut (see D14), so this "
-               "run cannot tell you which.")
+               "instead is absorbing content the user explicitly negated. Read with care: if "
+               "this run included only two tasks of different kinds it may mean models do not "
+               "misfile across dissimilar tasks; the task-count cells (3 and 4 tasks) include "
+               "two lists of the SAME kind with disjoint vocabularies, where misfiling would "
+               "be unmistakable, so check whether those cells are present before concluding "
+               "anything general.")
 
 per_task, clusters = [], []
 for r in rows:
