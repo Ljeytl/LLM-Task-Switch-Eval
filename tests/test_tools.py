@@ -146,6 +146,13 @@ def test_cache_coverage_key_uses_the_recorded_digest():
     assert expected_cache_key(row) != expected_cache_key({**row, "digest": "current"})
 
 
+def test_preflight_checks_generated_content_not_file_mtime():
+    script = (ROOT / "tools/preflight.sh").read_text()
+    assert " -ot " not in script
+    assert "plots_before=" in script
+    assert 'cmp -s "$power_check" results/POWER.md' in script
+
+
 @pytest.mark.parametrize("script", ["tools/power_analysis.py", "tools/audit_taxonomy.py"])
 def test_tool_runs_end_to_end_on_a_small_file(script, tmp_path: Path):
     data = tmp_path / "rows.jsonl"

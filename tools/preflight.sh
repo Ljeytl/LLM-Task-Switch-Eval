@@ -51,20 +51,9 @@ elif [ -s results/sweep.jsonl ]; then
 else
   bad "no results/sweep.jsonl to check the cache against"
 fi
-# Presence is not currency. Every one of these is DERIVED from sweep.jsonl, so one older
-# than the data is reporting the previous sweep's numbers under this sweep's name -- which
-# a presence check passes happily. Compared by mtime, and only when the data is v2 and no
-# sweep is still writing to it.
-sweep_running=$(pgrep -f "run.py --config" >/dev/null 2>&1 && echo yes || echo no)
 for f in RESULTS.md POWER.md dumbbell.png taxonomy.png; do
   if [ -s "results/$f" ]; then
-    if [ "$sweep_running" = yes ]; then
-      ok "present: results/$f (sweep still running; staleness not checked)"
-    elif [ -s results/sweep.jsonl ] && [ "results/$f" -ot results/sweep.jsonl ]; then
-      bad "STALE: results/$f predates results/sweep.jsonl -- run: ./tools/finalize.sh"
-    else
-      ok "present and current: results/$f"
-    fi
+    ok "present: results/$f (content checked below)"
   elif [ -s "results/v1/$f" ]; then ok "present: results/v1/$f (v1 archive)"
   else bad "missing: $f in results/ and results/v1/"; fi
 done
@@ -85,9 +74,37 @@ fi
 echo "== 4. Offline commands actually run =="
 n_tests=$($PY -m pytest tests/ -q --collect-only 2>/dev/null | grep -oE "^[0-9]+ tests" | head -1)
 $PY -m pytest tests/ -q >/dev/null 2>&1 && ok "pytest (${n_tests:-suite} passing)" || bad "pytest failed"
-$PY run.py --analyse --results "$DATA" >/dev/null 2>&1 && ok "run.py --analyse" || bad "run.py --analyse failed"
+readme_before=$(shasum -a 256 README.md results/RESULTS.md 2>/dev/null)
+if $PY tools/make_readme_results.py >/dev/null 2>&1; then
+  readme_after=$(shasum -a 256 README.md results/RESULTS.md 2>/dev/null)
+  if [ "$readme_before" = "$readme_after" ]; then
+    ok "README.md and results/RESULTS.md match the sweep by content"
+  else
+    bad "STALE: README.md or results/RESULTS.md changed during regeneration"
+  fi
+else
+  bad "tools/make_readme_results.py failed"
+fi
+plots_before=$(shasum -a 256 results/dumbbell.png results/taxonomy.png 2>/dev/null)
+if $PY run.py --analyse --results "$DATA" >/dev/null 2>&1; then
+  plots_after=$(shasum -a 256 results/dumbbell.png results/taxonomy.png 2>/dev/null)
+  if [ "$plots_before" = "$plots_after" ]; then
+    ok "run.py --analyse; plots match the sweep by content"
+  else
+    bad "STALE: plots changed during regeneration"
+  fi
+else
+  bad "run.py --analyse failed"
+fi
 $PY tools/audit_taxonomy.py "$DATA" >/dev/null 2>&1 && ok "tools/audit_taxonomy.py" || bad "audit failed"
-$PY tools/power_analysis.py "$DATA" >/dev/null 2>&1 && ok "tools/power_analysis.py" || bad "power analysis failed"
+power_check=$(mktemp "${TMPDIR:-/tmp}/taskswitch-power.XXXXXX")
+if $PY tools/power_analysis.py "$DATA" > "$power_check" 2>/dev/null \
+    && cmp -s "$power_check" results/POWER.md; then
+  ok "results/POWER.md matches the sweep by content"
+else
+  bad "STALE: results/POWER.md does not match the sweep"
+fi
+rm -f "$power_check"
 
 echo "== 5. Local inference (one real model call) =="
 if $PY -c "
