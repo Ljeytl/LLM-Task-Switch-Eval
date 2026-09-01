@@ -82,11 +82,16 @@ def _norm_time(s: Any) -> str:
     return f"{int(m.group(1)):02d}:{m.group(2)}"
 
 
+def _is_shopping(slot: str) -> bool:
+    """Slot keys are `<kind>_<index>`, so the kind is the prefix."""
+    return slot.split("_")[0] == TaskKind.SHOPPING.value
+
+
 def _canon(task: str, entries: Any) -> set[tuple[str, ...]]:
-    """A task's state as a comparable set of tuples."""
+    """A task slot's state as a comparable set of tuples."""
     if not isinstance(entries, list):
         return set()
-    if task == TaskKind.SHOPPING.value:
+    if _is_shopping(task):
         return {(_norm(e),) for e in entries if str(e).strip()}
     out: set[tuple[str, ...]] = set()
     for e in entries:
@@ -115,7 +120,7 @@ def _identity(task: str, entry: tuple[str, ...]) -> str:
     a meeting moved to the wrong hour is the same meeting tracked badly, which is a
     different failure from the meeting having vanished.
     """
-    return entry[0] if task == TaskKind.SHOPPING.value else entry[1]
+    return entry[0] if _is_shopping(task) else entry[1]
 
 
 def score(result: RunResult) -> Score:
@@ -129,7 +134,8 @@ def score(result: RunResult) -> Score:
                      failures=[(Failure.FORMAT, detail)],
                      n_expected=sum(len(v) for v in expected.values()))
 
-    reported_raw = result.parsed.model_dump()
+    reported_raw = (result.parsed.model_dump()
+                    if hasattr(result.parsed, "model_dump") else dict(result.parsed))
     actual = {t: _canon(t, reported_raw.get(t)) for t in expected}
 
     # Content the conversation planted as counterfactual and that must NOT appear.

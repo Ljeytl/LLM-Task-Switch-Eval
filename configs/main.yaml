@@ -1,36 +1,39 @@
-# The length arm, plus a negative control.
+# v2 sweep: an L-shaped design, both arms now deliverable.
 #
-# WHAT WAS CUT AND WHY (docs/DECISIONS.md D14): the planned task-count arm (2/3/4
-# concurrent tasks) is not implementable in this codebase. Task identity IS TaskKind,
-# and there are only two distinct kinds, so "3 tasks" resolved to
-# [SHOPPING, SCHEDULE, SHOPPING] -- the duplicate merges into the first list's state
-# and its turns get emitted twice. The token-match assertion caught it. Supporting a
-# real task-count arm needs per-instance identity (two separately named shopping
-# lists), which is recorded as next work.
+# The task-count arm was IMPOSSIBLE in v1. Task identity was TaskKind and only two kinds
+# existed, so "3 tasks" resolved to [shopping, schedule, shopping] and the duplicate
+# merged into the first list's state. Per-instance slots (D17) fixed that: each instance
+# is a separately named list with its own DISJOINT vocabulary, so a grocery item on the
+# hardware list is unmistakable -- which restores the misattribution diagnostic that made
+# the two-kind design work in the first place.
 #
 # n_ops = 6 is measured, not guessed. `run.py --calibrate` on qwen2.5-coder:7b:
 #     n_ops     6     12     18     24
-#     blocked  0.62  0.38   0.12   0.00   <-- 24 was the originally planned value
-# At the planned value every cell sits on the floor in both orderings and the sweep
-# reports "no switch cost" for reasons having nothing to do with switching.
+#     blocked  0.62  0.38   0.12   0.00
+# At 24 every cell sits on the floor and the sweep reports "no switch cost" for reasons
+# unrelated to switching.
 
 models:
   - qwen2.5-coder:7b
   - gemma4:12b
 
-num_ctx: 16384      # constant across every cell: sizing per-condition would change the
+num_ctx: 16384      # constant across every cell: per-condition sizing would change the
                     # model's setup between cells and invalidate the comparison
-n_pairs: 30         # see docs/LIMITATIONS.md §9 on power; 100+ is the paper-grade run
+n_pairs: 25         # see docs/LIMITATIONS.md 9 -- underpowered below ~120; stated, not hidden
 n_false: 2
 seed0: 1
 
 cells:
   # --- negative control ---------------------------------------------------------------
-  # One task: there is nothing to interleave, so both orderings are the identical
-  # sequence and the measured delta MUST be exactly zero. Any non-zero result here
-  # would mean the harness manufactures differences on its own.
+  # One task: nothing to interleave, so both orderings are the identical prompt and the
+  # delta MUST be exactly 0.0. Non-zero here would invalidate everything below.
   - {label: "ctrl_1task",  n_tasks: 1, n_ops: 6, n_noise: 40}
-  # --- length arm: 2 tasks, 6 ops, padding varies -------------------------------------
+  # --- length arm: 2 tasks, padding varies (now NESTED -- see LIMITATIONS 4b) ---------
   - {label: "len_short",   n_tasks: 2, n_ops: 6, n_noise: 0}
   - {label: "len_medium",  n_tasks: 2, n_ops: 6, n_noise: 40}   # <-- PRIMARY (pre-registered)
   - {label: "len_long",    n_tasks: 2, n_ops: 6, n_noise: 120}
+  # --- task-count arm: length fixed at medium, live-state count varies ----------------
+  # NEW IN v2. This is the question the project set out to ask.
+  - {label: "tasks_3",     n_tasks: 3, n_ops: 6, n_noise: 40}
+  - {label: "tasks_4",     n_tasks: 4, n_ops: 6, n_noise: 40}
+  # (tasks_2 at medium length is len_medium -- the shared corner of the L)

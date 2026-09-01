@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from typing import Any, Protocol, runtime_checkable
 
-from .ops import Op, OpKind, TaskKind
+from .ops import Op, OpKind, TaskKind, assign_slots, slot_key
 
 
 @runtime_checkable
@@ -126,21 +126,27 @@ _CONSTRUCTORS: dict[TaskKind, type] = {
 }
 
 
-def build_states(tasks: list[TaskKind]) -> dict[TaskKind, TaskState]:
-    """Fresh, independent state machines for the tasks a conversation tracks."""
-    return {t: _CONSTRUCTORS[t]() for t in tasks}
+def build_states(tasks: list[TaskKind]) -> dict[str, TaskState]:
+    """Fresh, independent state machines keyed by slot.
+
+    Keyed on `slot_key` rather than `TaskKind`, which is what allows two shopping lists
+    to be two states. Keying on the kind silently merged them, capping the design at two
+    concurrent tasks (docs/DECISIONS.md D14).
+    """
+    return {slot_key(t, s): _CONSTRUCTORS[t]()
+            for t, s in zip(tasks, assign_slots(tasks))}
 
 
 def ground_truth(ops: list[Op], tasks: list[TaskKind]) -> dict[str, Any]:
-    """Apply every op in sequence and return `{task_name: snapshot}`.
+    """Apply every op in sequence and return `{slot_key: snapshot}`.
 
-    Ops addressed to a task the conversation is not tracking are ignored, so a stray
-    op can never silently create an untracked state bucket. NOISE and FALSE_ASSERT
-    mutate nothing by construction (see `Op.mutating`).
+    Ops addressed to a slot the conversation is not tracking are ignored, so a stray op
+    can never silently create an untracked bucket. NOISE and FALSE_ASSERT mutate nothing
+    by construction (see `Op.mutating`).
     """
     states = build_states(tasks)
     for op in ops:
-        st = states.get(op.task)
+        st = states.get(op.key)
         if st is not None:
             st.apply(op)
-    return {t.value: states[t].snapshot() for t in tasks}
+    return {k: st.snapshot() for k, st in states.items()}

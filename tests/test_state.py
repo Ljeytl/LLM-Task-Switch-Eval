@@ -158,9 +158,24 @@ def test_snapshot_is_json_round_trippable() -> None:
 
 
 def test_untracked_task_ops_are_ignored() -> None:
-    """An op for a task this conversation is not tracking must not create a bucket."""
+    """An op for a slot this conversation is not tracking must not create a bucket."""
     ops = [Op(TaskKind.SCHEDULE, OpKind.ADD, {"time": "09:00", "title": "standup"}, 0)]
-    assert ground_truth(ops, [TaskKind.SHOPPING]) == {"shopping": []}
+    assert ground_truth(ops, [TaskKind.SHOPPING]) == {"shopping_0": []}
+
+
+def test_same_kind_slots_are_independent_states() -> None:
+    """Two shopping lists are two states, not one merged one. This is the D14 fix: task
+    identity is the slot, so a repeated kind no longer collapses."""
+    tasks = [TaskKind.SHOPPING, TaskKind.SHOPPING]
+    ops = [Op(TaskKind.SHOPPING, OpKind.ADD, {"item": "milk"}, 0, 0),
+           Op(TaskKind.SHOPPING, OpKind.ADD, {"item": "screws"}, 1, 1)]
+    assert ground_truth(ops, tasks) == {"shopping_0": ["milk"], "shopping_1": ["screws"]}
+
+
+def test_four_concurrent_tasks_yield_four_states() -> None:
+    tasks = [TaskKind.SHOPPING, TaskKind.SCHEDULE, TaskKind.SHOPPING, TaskKind.SCHEDULE]
+    gt = ground_truth([], tasks)
+    assert sorted(gt) == ["schedule_0", "schedule_1", "shopping_0", "shopping_1"]
 
 
 def test_illegal_op_construction_is_rejected() -> None:

@@ -27,7 +27,7 @@ import ollama
 from pydantic import BaseModel, Field
 
 from .generator import Conversation
-from .ops import TaskKind
+from .ops import TaskKind, assign_slots, slot_key
 
 ACK = "Got it."
 
@@ -58,7 +58,13 @@ class ModelSpec(BaseModel):
 
 
 class FinalState(BaseModel):
-    """The constrained output schema. Flat, one optional field per task."""
+    """The constrained output schema.
+
+    Historically one field per task KIND, which capped the design at two tasks. The
+    schema is now built per task SLOT (`schema_for`), so a conversation with two
+    shopping lists asks for `shopping_0` and `shopping_1` separately. These fields
+    remain for the two-task case and for backwards compatibility with cached rows.
+    """
 
     shopping: list[str] | None = Field(default=None)
     # Named keys, not positional pairs. The first demo run exposed why: with a bare
@@ -71,16 +77,23 @@ class FinalState(BaseModel):
 
     @staticmethod
     def schema_for(tasks: list[TaskKind]) -> dict[str, Any]:
-        """Only ask for the tasks this conversation actually tracks, so an unasked
-        field can never be scored as a hallucination."""
+        """One field per task SLOT, so two shopping lists get two fields.
+
+        Only the slots this conversation actually tracks are requested, so an unasked
+        field can never be scored as a hallucination. Field names match the oracle's
+        `slot_key`, which is what lets the scorer diff them without a mapping table.
+        """
         props: dict[str, Any] = {}
-        if TaskKind.SHOPPING in tasks:
-            props["shopping"] = {"type": "array", "items": {"type": "string"}}
-        if TaskKind.SCHEDULE in tasks:
-            props["schedule"] = {"type": "array", "items": {
-                "type": "object",
-                "properties": {"time": {"type": "string"}, "title": {"type": "string"}},
-                "required": ["time", "title"]}}
+        for t, sl in zip(tasks, assign_slots(tasks)):
+            key = slot_key(t, sl)
+            if t is TaskKind.SHOPPING:
+                props[key] = {"type": "array", "items": {"type": "string"}}
+            else:
+                props[key] = {"type": "array", "items": {
+                    "type": "object",
+                    "properties": {"time": {"type": "string"},
+                                   "title": {"type": "string"}},
+                    "required": ["time", "title"]}}
         return {"type": "object", "properties": props, "required": list(props)}
 
 
@@ -89,7 +102,7 @@ class RunResult:
     conversation: Conversation
     model: ModelSpec
     raw_final: str
-    parsed: FinalState | None
+    parsed: FinalState | dict[str, Any] | None
     parse_ok: bool
     n_retries: int
     wall_seconds: float
@@ -123,6 +136,27 @@ def cache_key(conv: Conversation, model: ModelSpec, constrained: bool) -> str:
         "tasks": [t.value for t in conv.tasks],
     }, sort_keys=True)
     return hashlib.sha256(payload.encode()).hexdigest()
+
+
+def parse_slots(raw: str) -> dict[str, Any] | None:
+    """Parse a response into `{slot_key: value}` without a fixed field list.
+
+    `FinalState` cannot express an arbitrary number of slots, so the slot-aware path
+    keeps the parsed answer as a plain dict. The scorer compares it against the
+    oracle's snapshot, which is keyed the same way.
+    """
+    text = raw.strip()
+    if text.startswith("```"):
+        text = text.split("```")[1] if "```" in text[3:] else text[3:]
+        text = text.removeprefix("json").strip()
+    start, end = text.find("{"), text.rfind("}")
+    if start == -1 or end == -1:
+        return None
+    try:
+        obj = json.loads(text[start:end + 1])
+    except Exception:
+        return None
+    return obj if isinstance(obj, dict) else None
 
 
 def _parse(raw: str) -> FinalState | None:
@@ -185,11 +219,12 @@ def run_conversation(conv: Conversation, model: ModelSpec, constrained: bool = T
         if use_cache and not blob["error"]:
             cached.write_text(json.dumps(blob))
 
-    parsed = _parse(blob["content"])
+    parsed = parse_slots(blob["content"])
     # Free-form answers are usually correct prose rather than JSON. A second extraction
     # pass turns them into the schema so the comparison is about tracking, not format.
     if parsed is None and extract and not constrained:
-        parsed = extract_state(blob["content"], conv.tasks, model, use_cache)
+        st = extract_state(blob["content"], conv.tasks, model, use_cache)
+        parsed = st.model_dump() if isinstance(st, FinalState) else st
     return RunResult(
         conversation=conv, model=model, raw_final=blob["content"], parsed=parsed,
         parse_ok=parsed is not None, n_retries=blob["retries"],

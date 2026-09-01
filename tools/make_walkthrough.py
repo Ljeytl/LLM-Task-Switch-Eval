@@ -21,9 +21,16 @@ SEED, TASKS = 1001, [TaskKind.SHOPPING, TaskKind.SCHEDULE]
 MODEL = sys.argv[1] if len(sys.argv) > 1 else "qwen2.5-coder:7b"
 
 
+def _d(parsed):
+    """Parsed answers are plain slot-keyed dicts; the extraction path may return a model."""
+    if parsed is None:
+        return None
+    return parsed.model_dump() if hasattr(parsed, "model_dump") else parsed
+
+
 def fmt_ops(conv):
     return "\n".join(
-        f"  {i:>2}. {o.task.value:<9} {o.kind.value:<13} {json.dumps(o.payload)}"
+        f"  {i:>2}. {o.key:<11} {o.kind.value:<13} {json.dumps(o.payload)}"
         for i, o in enumerate(conv.ops))
 
 
@@ -106,12 +113,12 @@ verified against Ollama's own count rather than estimated.
 
 Blocked response:
 ```json
-{json.dumps(rb.parsed.model_dump() if rb.parsed else None, indent=2)}
+{json.dumps(_d(rb.parsed), indent=2)}
 ```
 
 Interleaved response:
 ```json
-{json.dumps(ri.parsed.model_dump() if ri.parsed else None, indent=2)}
+{json.dumps(_d(ri.parsed), indent=2)}
 ```
 
 ## 5. The score

@@ -64,7 +64,17 @@ padding") from the qwen data before gemma4 had run. It is not general. Noise sen
 is a property of the model, and a single-model result would have shipped it as a property
 of the design.
 
-**This also exposes a methodological error of mine.** `run.py --calibrate` sweeps
+**The v2 refactor invalidated the calibration a second time.** `n_ops = 6` was measured
+against v1 templates. v2 names the target list in every turn ("add milk to my grocery
+list"), which lengthens each turn and the system prompt, and the same conditions came
+back materially harder — the single-task control fell from 0.600 to 0.320. The design
+still measures (nothing is on the floor), and the control still reads exactly +0.0pp, but
+the cells sit below the band they were calibrated for. Re-running `--calibrate` against
+the current templates before the next sweep is the fix, and it is the same mistake as the
+one below in a different costume: calibrating one thing, then changing another underneath
+it.
+
+**The original methodological error, kept because the pattern repeated.** `run.py --calibrate` sweeps
 `n_ops` at `n_noise = 0`, and I picked `n_ops = 6` from that curve. But difficulty is
 driven by *both* knobs, so the primary cell — which adds 40 noise turns on top — landed
 at 0.47 blocked rather than in the 0.6–0.8 band I had calibrated for. It is still
@@ -99,23 +109,30 @@ one noise placement, which is the pairing the whole design rests on. What is aff
 *between-cell* comparison — any read of a trend across noise levels carries placement
 variance on top of quantity.
 
-**The fix is small and should have been obvious.** Draw one maximum-size noise pool per
-seed and take the first N for each condition, so longer conditions are strict supersets
-of shorter ones and the length arm becomes properly nested. It requires a full re-run,
-so it is recorded as next work rather than applied here.
+**Fixed in v2.** `n_noise` was removed from the mix-RNG key, one pool of `MAX_NOISE_POOL`
+positions is drawn per slot, and each condition takes a prefix — so a longer condition is
+now a strict superset of a shorter one. Two subtleties had to be fixed alongside it: the
+extras list was shuffled (which reassigned positions whenever it grew), and rendering
+walked one shared RNG in list order (which changed paraphrases for everything after an
+inserted turn). Both are covered by
+`test_noise_conditions_are_nested_not_independent_draws` and
+`test_mutating_stream_is_invariant_to_noise_level`.
 
 ---
 
-## 5. There is no task-count result at all
+## 5. The task-count arm is now run, but the instances are synthetic
 
-The design called for measuring switch cost at 2, 3 and 4 concurrent tasks. That arm
-was **cut**, not run: task identity is `TaskKind` and there are only two kinds, so a
-third "task" repeated one and merged into its state (`DECISIONS.md` D14).
+v1 had no task-count result at all; task identity was `TaskKind` and a third task merged
+into the first (D14). v2 keys state on per-instance slots with disjoint vocabularies
+(D17), so 1-4 concurrent tasks are genuinely independent and misattribution between two
+lists of the *same kind* is detectable.
 
-So the central question "how many live tasks can this model hold?" is **not answered
-here**. What is answered is the narrower one: what does interleaving two tasks cost, and
-does that cost change with context length. Supporting a real task-count arm needs
-per-instance task identity and is the second item of next work.
+What remains synthetic: the instances are distinguished by an explicit name in every
+turn ("add milk to my **grocery list**"). Real users are far more elliptical — they say
+"add milk" and expect the assistant to infer which list from context. This design
+therefore measures tracking with the *routing problem removed*, which is easier than the
+real thing. Making the reference implicit is the natural follow-up and would likely
+raise misattribution sharply.
 
 ---
 

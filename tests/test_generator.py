@@ -70,7 +70,8 @@ def test_n_ops_is_total_not_per_task(seed):
     'more tasks is harder' result would be partly a 'longer is harder' result.
     """
     two, _ = build_pair(seed, T2, 24, 0, 0)
-    assert len(two.turns) == 24
+    four, _ = build_pair(seed, T2 + T2, 24, 0, 0)
+    assert len(two.turns) == len(four.turns) == 24
 
 
 @pytest.mark.parametrize("seed", range(15))
@@ -130,13 +131,42 @@ def test_cli_accepts_config_without_explicit_sweep_flag():
     assert r.returncode != 0 and "--config" in r.stderr
 
 
-def test_duplicate_task_kinds_are_rejected():
-    """Regression, and an important one. Task identity is TaskKind, so [SHOPPING,
-    SCHEDULE, SHOPPING] is not three concurrent tasks -- the duplicate merges into the
-    first one's state and order_ops emits its turns twice. A degenerate "3 tasks"
-    condition that quietly measured 2 would be a fabricated result, so this raises."""
-    with pytest.raises(ValueError, match="duplicate task kinds"):
-        build_pair(1, [TaskKind.SHOPPING, TaskKind.SCHEDULE, TaskKind.SHOPPING], 6, 0, 0)
+@pytest.mark.parametrize("seed", range(10))
+def test_duplicate_task_kinds_are_now_independent_tasks(seed):
+    """The D14 fix. [SHOPPING, SCHEDULE, SHOPPING] used to collapse to two states and
+    emit the shopping turns twice; it is now three genuine concurrent tasks."""
+    tasks = [TaskKind.SHOPPING, TaskKind.SCHEDULE, TaskKind.SHOPPING]
+    b, i = build_pair(seed, tasks, 9, 0, 0)
+    assert sorted(b.expected) == ["schedule_0", "shopping_0", "shopping_1"]
+    assert len(b.turns) == len(i.turns) == 9
+    assert sorted(b.turns) == sorted(i.turns)
+
+
+@pytest.mark.parametrize("n_tasks", [1, 2, 3, 4])
+def test_task_count_arm_is_deliverable(n_tasks):
+    """The whole point of the refactor: 1-4 concurrent tasks all work, token-matched."""
+    tasks = [TaskKind.SHOPPING, TaskKind.SCHEDULE,
+             TaskKind.SHOPPING, TaskKind.SCHEDULE][:n_tasks]
+    b, i = build_pair(3, tasks, 8, 2, 4)
+    assert len(b.expected) == n_tasks
+    assert sorted(b.turns) == sorted(i.turns)
+    assert b.token_count == i.token_count
+
+
+def test_same_kind_slots_draw_disjoint_vocabularies():
+    """Two shopping lists must not share items, or misattribution becomes invisible --
+    which is the property the original two-kind design got for free and the reason the
+    taxonomy could diagnose misfiling at all."""
+    from taskswitch.surface import vocabulary
+    a, b = set(vocabulary(TaskKind.SHOPPING, 0)), set(vocabulary(TaskKind.SHOPPING, 1))
+    assert not (a & b)
+    ca, cb = set(vocabulary(TaskKind.SCHEDULE, 0)), set(vocabulary(TaskKind.SCHEDULE, 1))
+    assert not (ca & cb)
+
+
+def test_too_many_instances_of_one_kind_is_rejected():
+    with pytest.raises(ValueError, match="distinct vocabularies"):
+        build_pair(1, [TaskKind.SHOPPING] * 9, 9, 0, 0)
 
 
 def test_single_task_pair_is_a_null_control():
@@ -147,3 +177,31 @@ def test_single_task_pair_is_a_null_control():
     b, i = build_pair(5, [TaskKind.SHOPPING], 6, 2, 4)
     assert b.turns == i.turns
     assert [o.idx for o in b.ops] == [o.idx for o in i.ops]
+
+
+@pytest.mark.parametrize("seed", range(12))
+def test_noise_conditions_are_nested_not_independent_draws(seed):
+    """LIMITATIONS 4b fix. Raising n_noise must ADD padding, not redraw it.
+
+    Previously `n_noise` was part of the mix-RNG key, so the 40-noise and 120-noise
+    conditions drew entirely different placements. Between-cell trends then carried
+    placement variance on top of quantity -- visible in the first sweep as seeds whose
+    outcome went correct -> wrong -> correct across noise levels, which additive
+    difficulty cannot produce.
+    """
+    short, _ = build_pair(seed, T2, 12, 2, 4)
+    long_, _ = build_pair(seed, T2, 12, 2, 20)
+    # The shorter condition's turns must all survive into the longer one.
+    from collections import Counter
+    assert not (Counter(short.turns) - Counter(long_.turns))
+    assert short.expected == long_.expected
+
+
+@pytest.mark.parametrize("seed", range(8))
+def test_mutating_stream_is_invariant_to_noise_level(seed):
+    """The operations themselves must not move when padding changes."""
+    a = [(o.key, o.kind.value, tuple(sorted(o.payload.items())))
+         for o in sample_ops(seed, T2, 12, 2, 0) if o.mutating]
+    b = [(o.key, o.kind.value, tuple(sorted(o.payload.items())))
+         for o in sample_ops(seed, T2, 12, 2, 60) if o.mutating]
+    assert a == b

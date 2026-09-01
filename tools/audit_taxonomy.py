@@ -44,11 +44,21 @@ def canon_schedule(xs):
     return {x for x in out if x}
 
 
+def is_shopping(slot: str) -> bool:
+    """Slot keys are `<kind>_<index>` (`shopping_0`), so the kind is the prefix.
+
+    Matching the bare string `"shopping"` silently routed every slot to the schedule
+    canonicaliser after the v2 slot refactor -- and because that returns an empty set for
+    a list of plain strings, whole tasks looked stateless. Caught by tests/test_tools.py.
+    """
+    return slot.split("_")[0] == "shopping"
+
+
 def identities(blob):
     """Every entity identity present, by task, in either an expected or reported blob."""
     out = {}
     for task, v in (blob or {}).items():
-        out[task] = canon_shopping(v) if task == "shopping" else canon_schedule(v)
+        out[task] = canon_shopping(v) if is_shopping(task) else canon_schedule(v)
     return out
 
 
@@ -60,7 +70,7 @@ def entries(blob):
     """
     out = {}
     for task, v in (blob or {}).items():
-        if task == "shopping":
+        if is_shopping(task):
             out[task] = {("", str(x).strip().lower()) for x in (v or []) if str(x).strip()}
         else:
             s = set()

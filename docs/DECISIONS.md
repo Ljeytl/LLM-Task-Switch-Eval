@@ -293,3 +293,46 @@ Fourth instance of the same pattern in this project (see D7, D14, D15): **the me
 apparatus was broken, and it failed in a direction that flattered the result.** A check
 that produces a suspiciously large effect deserves the same scrutiny as one that
 produces none.
+
+
+---
+
+### D17 — Task identity is a *slot*, not a `TaskKind`
+*Reverses D14. The task-count arm is now deliverable.*
+
+D14 recorded the task-count arm as impossible and cut it. That was the right call at the
+time — a correct fix needed a refactor across six modules — but it left the project
+unable to answer the question it set out to ask: *how many live tasks can a model hold?*
+
+**The change.** An `Op` now carries a `slot: int` alongside its `TaskKind`, and every
+state bucket is keyed on `slot_key(task, slot)` — `shopping_0`, `shopping_1` — rather
+than on the kind. `assign_slots` turns `[SHOPPING, SCHEDULE, SHOPPING]` into slots
+`[0, 0, 1]`, giving three independent states where there were two.
+
+**The part that matters more than the plumbing: disjoint vocabularies.** Each slot draws
+from its own entity pool — grocery items, hardware items, pharmacy items; work meetings,
+personal appointments. This is not decoration. The original two-task design got its
+diagnostic power from using two *different kinds*, so a grocery item appearing in a
+schedule was unmistakable. Two generic shopping lists would have destroyed that, and
+`LIMITATIONS.md` said so. Naming the instances and separating their vocabularies
+preserves the property while lifting the two-task cap: `screws` on the grocery list is
+just as unmistakable as `milk` in a calendar.
+
+Every surface template now names its list explicitly ("add milk to my **grocery list**"),
+because with two lists of one kind an unnamed turn would be genuinely ambiguous — and an
+ambiguous turn makes the answer key *unanswerable*, not merely hard. That is the D7
+lesson applied before it could bite rather than after.
+
+**Two bugs the refactor surfaced, both caught immediately:**
+
+1. Nesting broke. Rendering walked one shared RNG in list order, so adding a noise turn
+   changed the paraphrase chosen for every op after it. Each op now derives its own
+   generator from a key stable under changes elsewhere in the list: its slot, kind,
+   payload, and how many identical ops precede it.
+2. The sweep crashed on its first row: `parsed` became a plain slot-keyed dict and
+   `run.py` still called `.model_dump()` on it. Crashing loudly on row one is the good
+   outcome; it is now handled and regression-tested.
+
+**Cost, stated honestly.** v1 results are not reproducible from this code — every prompt
+changed, so token counts and cache keys all differ. They are preserved under
+`results/v1/` with their provenance rather than silently replaced.

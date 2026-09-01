@@ -18,14 +18,16 @@ identical in both. Only the sequence differs, so the ground truth is provably th
 
 ## The grid, as shipped
 
-Four cells per model. `n_ops = 6` throughout — measured, not guessed (see Calibration).
+Six cells per model. `n_ops = 6` throughout — measured, not guessed (see Calibration).
 
 | label | n_tasks | n_ops | n_noise | role |
 |---|---|---|---|---|
 | `ctrl_1task` | 1 | 6 | 40 | **Negative control.** Nothing to interleave, so the delta must be exactly 0. |
 | `len_short` | 2 | 6 | 0 | |
-| `len_medium` | 2 | 6 | 40 | **Primary**, pre-registered |
+| `len_medium` | 2 | 6 | 40 | **Primary**, pre-registered; shared corner of the L |
 | `len_long` | 2 | 6 | 120 | Does switch cost grow with context length? |
+| `tasks_3` | 3 | 6 | 40 | |
+| `tasks_4` | 4 | 6 | 40 | Does switch cost grow with the number of live states? |
 
 **Why a length arm and not a single point.** Holding context length fixed licenses a
 claim at one length only. Varying it turns the result from a number into a shape, and
@@ -33,13 +35,16 @@ answers the criticism levelled at the closest prior work: rather than holding le
 constant *or* confounding it with interleaving, this varies length while the
 interleaving contrast is made independently inside each cell.
 
-### The task-count arm was cut
+### The task-count arm, cut in v1 and restored in v2
 
-The plan called for a second arm at 2/3/4 concurrent tasks. It turned out to be
-undeliverable: task identity is `TaskKind` and there are only two kinds, so "3 tasks"
-resolved to `[SHOPPING, SCHEDULE, SHOPPING]` — the duplicate merged into the first
-list's state and its turns were emitted twice. The token-match assertion caught it.
-Full reasoning, and why it was cut rather than fixed, in `DECISIONS.md` D14.
+v1 could not run it. Task identity was `TaskKind` and only two kinds existed, so "3
+tasks" resolved to `[SHOPPING, SCHEDULE, SHOPPING]` — the duplicate merged into the
+first list's state and its turns were emitted twice. The token-match assertion caught it
+and the arm was cut (`DECISIONS.md` D14).
+
+v2 keys state on per-instance **slots** with disjoint vocabularies (D17), so 1–4
+concurrent tasks are genuinely independent and misattribution between two lists of the
+same kind is detectable. The arm is in `configs/main.yaml` as `tasks_3` and `tasks_4`.
 
 ## Pre-registration
 

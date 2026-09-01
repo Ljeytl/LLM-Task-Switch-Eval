@@ -1,5 +1,37 @@
 # Changelog
 
+## v2 — per-instance task identity
+
+### Added
+- **Task slots** (`Op.slot`, `slot_key`, `assign_slots`). State is keyed per instance, so
+  two shopping lists are two independent states. Lifts the two-task cap and makes the
+  task-count arm deliverable for the first time. (D17, reverses D14)
+- **Disjoint vocabularies per slot** (`surface.vocabulary`): grocery / hardware /
+  pharmacy / garden items, work / personal / team / family calendars. This is what keeps
+  misattribution detectable between two lists of the *same kind* — the diagnostic the
+  original two-kind design got for free.
+- **Task-count arm** in `configs/main.yaml`: `tasks_3`, `tasks_4`.
+- **`tests/test_surface.py`, `tests/test_runner.py`, `tests/test_plots.py`** — 126 new
+  tests covering three modules that previously had none. Suite is now 518.
+
+### Changed
+- **Nested noise pools.** `n_noise` removed from the mix-RNG key; one pool per slot with
+  each condition taking a prefix, so longer length conditions are strict supersets.
+  Required two further fixes: the extras list was shuffled (reassigning positions when it
+  grew) and rendering walked one shared RNG in list order (changing paraphrases after any
+  insertion). Rendering is now per-op, keyed on op identity. (LIMITATIONS 4b)
+- Every surface template names its target list, since with two lists of one kind an
+  unnamed turn is ambiguous — and an ambiguous turn makes the answer key unanswerable.
+- `parsed` is now a plain slot-keyed dict; `FinalState` cannot express N slots.
+
+### Known
+- **The calibration is stale.** `n_ops = 6` was measured on v1 templates; v2 turns are
+  longer and the conditions came back harder (control 0.600 → 0.320). Re-calibrate before
+  the next sweep. See LIMITATIONS 4.
+- v1 results are not reproducible from v2 code and are archived under `results/v1/` with
+  their provenance.
+
+
 ## Unreleased — initial build
 
 ### Added

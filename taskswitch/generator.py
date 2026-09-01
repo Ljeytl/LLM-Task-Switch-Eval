@@ -25,9 +25,9 @@ from enum import Enum
 from random import Random
 from typing import Any
 
-from .ops import Op, OpKind, TaskKind
+from .ops import Op, OpKind, TaskKind, assign_slots, slot_key
 from .state import ground_truth
-from .surface import ITEMS, TITLES, render, render_final_request, system_prompt
+from .surface import render, render_final_request, system_prompt, vocabulary
 
 
 class Ordering(str, Enum):
@@ -66,6 +66,11 @@ def approx_tokens(texts: list[str]) -> int:
     return sum(len(t.split()) for t in texts)
 
 
+#: Noise pool size. Conditions take a prefix of one pool of this size, which is what
+#: makes longer length conditions strict supersets of shorter ones.
+MAX_NOISE_POOL = 512
+
+
 def _deal(total: int, k: int) -> list[int]:
     """Split `total` across `k` tasks, remainder to earlier tasks.
 
@@ -92,7 +97,7 @@ def _subrng(seed: int, *parts: object) -> Random:
     return Random(int.from_bytes(hashlib.blake2b(key, digest_size=8).digest(), "big"))
 
 
-def _sample_task_ops(task: TaskKind, n_mut: int, n_noise: int, n_false: int,
+def _sample_task_ops(task: TaskKind, slot: int, n_mut: int, n_noise: int, n_false: int,
                      seed: int) -> list[Op]:
     """Ops for one task, in the order that task's turns will appear.
 
@@ -101,14 +106,22 @@ def _sample_task_ops(task: TaskKind, n_mut: int, n_noise: int, n_false: int,
     model on them would conflate state tracking with the model's guess at our
     edge-case policy -- a different question than the one being asked.
     """
+    # Streams are keyed on the SLOT, not the kind, so two shopping lists in one
+    # conversation draw independently instead of sharing a generator.
+    key = slot_key(task, slot)
     # Stream A: the mutating operations. Must not depend on n_noise or n_false.
-    rng = _subrng(seed, task.value, "mut", n_mut)
+    rng = _subrng(seed, key, "mut", n_mut)
     # Stream B: placement of inert turns. Varying this cannot disturb Stream A.
-    mix = _subrng(seed, task.value, "mix", n_noise, n_false)
+    # NOT keyed on n_noise: keying on it made every noise level draw a fresh placement,
+    # so the length conditions were independent draws rather than nested ones and
+    # between-cell comparison carried placement variance (LIMITATIONS.md 4b). One pool
+    # is drawn at MAX_NOISE_POOL and each condition takes a prefix, so a longer
+    # condition is now a strict superset of a shorter one.
+    mix = _subrng(seed, key, "mix", n_false)
 
     ops: list[Op] = []
     if task is TaskKind.SHOPPING:
-        pool = list(ITEMS)
+        pool = list(vocabulary(task, slot))
         rng.shuffle(pool)
         live: list[str] = []
         for _ in range(n_mut):
@@ -129,12 +142,13 @@ def _sample_task_ops(task: TaskKind, n_mut: int, n_noise: int, n_false: int,
                 live.remove(item)
             else:
                 item = rng.choice(live) if live else pool[0]
-            ops.append(Op(task, kind, {"item": item}, 0))
+            ops.append(Op(task, kind, {"item": item}, 0, slot))
         for _ in range(n_false):
             ops.append(Op(task, OpKind.FALSE_ASSERT,
-                          {"item": mix.choice([i for i in pool if i not in live] or pool)}, 0))
+                          {"item": mix.choice([i for i in pool if i not in live] or pool)},
+                          0, slot))
     else:
-        pool = list(TITLES)
+        pool = list(vocabulary(task, slot))
         rng.shuffle(pool)
         # Distinct times: double-booking is legal in the oracle but ambiguous to a
         # reader, and we are not trying to test the model on our conflict policy.
@@ -154,40 +168,49 @@ def _sample_task_ops(task: TaskKind, n_mut: int, n_noise: int, n_false: int,
                 else:
                     title, time = unused[0], times.pop()
                     live[title] = time
-                    ops.append(Op(task, kind, {"title": title, "time": time}, 0))
+                    ops.append(Op(task, kind, {"title": title, "time": time}, 0, slot))
                     continue
             if kind is OpKind.UPDATE:
                 title = rng.choice(sorted(live))
                 new_time = times.pop() if times else "12:00"
                 live[title] = new_time
-                ops.append(Op(task, kind, {"title": title, "new_time": new_time}, 0))
+                ops.append(Op(task, kind, {"title": title, "new_time": new_time}, 0, slot))
             elif kind is OpKind.REMOVE:
                 title = rng.choice(sorted(live))
                 del live[title]
-                ops.append(Op(task, kind, {"title": title}, 0))
+                ops.append(Op(task, kind, {"title": title}, 0, slot))
             else:
                 title = rng.choice(sorted(live)) if live else pool[0]
-                ops.append(Op(task, kind, {"title": title}, 0))
+                ops.append(Op(task, kind, {"title": title}, 0, slot))
         for _ in range(n_false):
             spare = [t for t in pool if t not in live] or pool
             ops.append(Op(task, OpKind.FALSE_ASSERT,
                           {"title": mix.choice(spare),
-                           "time": mix.choice(times) if times else "12:00"}, 0))
+                           "time": mix.choice(times) if times else "12:00"}, 0, slot))
 
     for _ in range(n_noise):
-        ops.append(Op(task, OpKind.NOISE, {}, 0))
+        ops.append(Op(task, OpKind.NOISE, {}, 0, slot))
 
     # Shuffle noise and false assertions into the mutating stream. Mutating ops keep
     # their relative order -- their sequence is what the oracle depends on.
+    #
+    # Insertion positions come from a fixed-length pool truncated to the number of
+    # extras, so raising n_noise ADDS turns without moving the ones already there.
     mutating = [o for o in ops if o.kind not in (OpKind.NOISE, OpKind.FALSE_ASSERT)]
-    extras = [o for o in ops if o.kind in (OpKind.NOISE, OpKind.FALSE_ASSERT)]
-    mix.shuffle(extras)
-    slots = sorted(mix.randrange(len(mutating) + 1) for _ in extras)
+    # Stable order, NOT shuffled: false assertions first (their count is fixed across
+    # length conditions), then noise. Shuffling reassigned positions whenever the list
+    # grew, which broke nesting.
+    extras = ([o for o in ops if o.kind is OpKind.FALSE_ASSERT]
+              + [o for o in ops if o.kind is OpKind.NOISE])
+    pool = [mix.randrange(len(mutating) + 1) for _ in range(MAX_NOISE_POOL)]
+    # Pair each extra with its own draw BEFORE sorting, so an extra keeps its position
+    # when later ones are added. Sorting the positions alone would reshuffle them.
+    placed = sorted(zip(pool[:len(extras)], range(len(extras))))
     out: list[Op] = []
     e = 0
     for i in range(len(mutating) + 1):
-        while e < len(extras) and slots[e] == i:
-            out.append(extras[e]); e += 1
+        while e < len(placed) and placed[e][0] == i:
+            out.append(extras[placed[e][1]]); e += 1
         if i < len(mutating):
             out.append(mutating[i])
     return out
@@ -200,26 +223,34 @@ def sample_ops(seed: int, tasks: list[TaskKind], n_ops: int,
     the conversation. That decision is what keeps task count from being confounded
     with context length."""
     k = len(tasks)
+    slots = assign_slots(tasks)
     muts, falses, noises = _deal(n_ops, k), _deal(n_false, k), _deal(n_noise, k)
     out: list[Op] = []
     for i, t in enumerate(tasks):
-        out.extend(_sample_task_ops(t, muts[i], noises[i], falses[i], seed))
-    return [Op(o.task, o.kind, o.payload, i) for i, o in enumerate(out)]
+        out.extend(_sample_task_ops(t, slots[i], muts[i], noises[i], falses[i], seed))
+    return [Op(o.task, o.kind, o.payload, i, o.slot) for i, o in enumerate(out)]
 
 
 def order_ops(ops: list[Op], ordering: Ordering, tasks: list[TaskKind]) -> list[Op]:
-    """BLOCKED groups by task; INTERLEAVED round-robins. Within-task order is
-    preserved identically by both, which is what makes the two conversations carry the
-    same operations rather than merely the same operation counts."""
-    per = {t: [o for o in ops if o.task == t] for t in tasks}
+    """BLOCKED groups by task slot; INTERLEAVED round-robins across slots.
+
+    Grouped by SLOT, not kind. Grouping by kind meant two shopping lists were one
+    bucket, so blocked ordering emitted their turns twice and interleaving never
+    switched between them (docs/DECISIONS.md D14).
+
+    Within-slot order is preserved identically by both orderings, which is what makes
+    the two conversations carry the same operations rather than merely the same counts.
+    """
+    keys = [slot_key(t, s) for t, s in zip(tasks, assign_slots(tasks))]
+    per = {k: [o for o in ops if o.key == k] for k in keys}
     if ordering is Ordering.BLOCKED:
-        return [o for t in tasks for o in per[t]]
+        return [o for k in keys for o in per[k]]
     out: list[Op] = []
-    idx = {t: 0 for t in tasks}
-    while any(idx[t] < len(per[t]) for t in tasks):
-        for t in tasks:
-            if idx[t] < len(per[t]):
-                out.append(per[t][idx[t]]); idx[t] += 1
+    idx = {k: 0 for k in keys}
+    while any(idx[k] < len(per[k]) for k in keys):
+        for k in keys:
+            if idx[k] < len(per[k]):
+                out.append(per[k][idx[k]]); idx[k] += 1
     return out
 
 
@@ -238,22 +269,32 @@ def build_pair(seed: int, tasks: list[TaskKind], n_ops: int,
     Renders every op exactly once, then reorders the rendered turns. Asserts that the
     two orderings hold the identical multiset of turn strings.
     """
-    # Task identity is TaskKind, so a repeated kind is not a second concurrent task --
-    # it silently merges into the first one's state, and order_ops emits its turns
-    # twice. Rejected explicitly rather than left to fail downstream: a degenerate
-    # "4 concurrent tasks" condition that quietly measured 2 would be far worse than
-    # an error. See docs/DECISIONS.md D14.
-    if len(set(tasks)) != len(tasks):
-        raise ValueError(
-            f"duplicate task kinds {[t.value for t in tasks]}: with {len(set(TaskKind))} "
-            f"distinct kinds, at most {len(set(TaskKind))} concurrent tasks are supported")
+    # Repeated kinds ARE supported now -- each becomes its own named instance with its
+    # own disjoint vocabulary (D14 / D17). The cap is the number of named instances.
+    from .surface import SLOT_ITEMS, SLOT_TITLES
+    caps = {TaskKind.SHOPPING: len(SLOT_ITEMS), TaskKind.SCHEDULE: len(SLOT_TITLES)}
+    for kind in set(tasks):
+        n = sum(1 for t in tasks if t == kind)
+        if n > caps[kind]:
+            raise ValueError(f"{n} instances of {kind.value} requested but only "
+                             f"{caps[kind]} distinct vocabularies exist")
 
     ops = sample_ops(seed, tasks, n_ops, n_false, n_noise)
 
-    # One rendering pass, keyed by the op's emission index. Rendering per-ordering
-    # would desynchronise the RNG and pick different paraphrases.
-    rng = Random(seed ^ 0x5EED)
-    text_by_idx = {o.idx: render(o, rng) for o in ops}
+    # One rendering pass. Each op gets its OWN generator, derived from a key that is
+    # stable under changes to the rest of the list: its slot, kind, payload, and how
+    # many identical ops precede it in the same slot.
+    #
+    # A single shared generator walked in list order would pick different paraphrases
+    # for the same op as soon as anything earlier was added or removed -- which broke
+    # nesting across noise levels just as surely as the placement did.
+    seen: dict[tuple, int] = {}
+    text_by_idx: dict[int, str] = {}
+    for o in ops:
+        ident = (o.key, o.kind.value, tuple(sorted(o.payload.items())))
+        n = seen.get(ident, 0)
+        seen[ident] = n + 1
+        text_by_idx[o.idx] = render(o, _subrng(seed, "render", *ident, n))
 
     expected = ground_truth(ops, tasks)
     sys_prompt, final = system_prompt(tasks), render_final_request(tasks)

@@ -63,7 +63,10 @@ def row_of(res, sc, cell_extra: dict[str, Any] | None = None) -> dict[str, Any]:
         "prompt_tokens": res.prompt_tokens, "eval_tokens": res.eval_tokens,
         "wall_seconds": round(res.wall_seconds, 3),
         "expected": c.expected,
-        "reported": res.parsed.model_dump() if res.parsed else None,
+        # `parsed` is a plain dict keyed by slot (runner.parse_slots); the extraction
+        # path may still hand back a pydantic model, so accept either.
+        "reported": (res.parsed.model_dump() if hasattr(res.parsed, "model_dump")
+                     else res.parsed),
         **(cell_extra or {}),
     }
 

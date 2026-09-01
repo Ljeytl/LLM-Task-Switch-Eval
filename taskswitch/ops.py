@@ -57,6 +57,43 @@ LEGAL_OPS: Mapping[TaskKind, frozenset[OpKind]] = MappingProxyType({
 })
 
 
+#: Distinct named instances per task kind. Task identity used to be TaskKind itself,
+#: which capped the design at two concurrent tasks and silently merged a third into the
+#: first (see docs/DECISIONS.md D14). Naming the instances lifts that cap AND restores
+#: the taxonomy's diagnostic power: each instance draws from its own vocabulary, so an
+#: item in the wrong list is unmistakable rather than merely wrong.
+SLOT_NAMES: Mapping[TaskKind, tuple[str, ...]] = MappingProxyType({
+    TaskKind.SHOPPING: ("grocery list", "hardware list", "pharmacy list", "garden list"),
+    TaskKind.SCHEDULE: ("work calendar", "personal calendar", "team calendar",
+                        "family calendar"),
+})
+
+
+def slot_key(task: TaskKind, slot: int) -> str:
+    """Stable identifier for one task instance, e.g. `shopping_0`.
+
+    Used as the dict key everywhere state is held, so two shopping lists are two
+    independent states rather than one merged one.
+    """
+    return f"{task.value}_{slot}"
+
+
+def slot_label(task: TaskKind, slot: int) -> str:
+    """Human-facing name for a task instance, e.g. `hardware list`."""
+    names = SLOT_NAMES[task]
+    return names[slot % len(names)]
+
+
+def assign_slots(tasks: list[TaskKind]) -> list[int]:
+    """Per-kind instance index for each position: [SHOP, SCHED, SHOP] -> [0, 0, 1]."""
+    seen: dict[TaskKind, int] = {}
+    out: list[int] = []
+    for t in tasks:
+        out.append(seen.get(t, 0))
+        seen[t] = seen.get(t, 0) + 1
+    return out
+
+
 @dataclass(frozen=True)
 class Op:
     """One operation in the emitted sequence.
@@ -75,12 +112,21 @@ class Op:
     `idx` is the position in the *emitted* sequence, before ordering is applied. It is
     what lets a blocked and an interleaved conversation be recognised as carrying the
     identical operations, and it is preserved through reordering.
+
+    `slot` distinguishes two instances of the same kind -- a grocery list and a hardware
+    list are two independent states, not one.
     """
 
     task: TaskKind
     kind: OpKind
     payload: dict[str, Any]
     idx: int
+    slot: int = 0     # which instance of `task` this op addresses
+
+    @property
+    def key(self) -> str:
+        """The state bucket this op belongs to."""
+        return slot_key(self.task, self.slot)
 
     def __post_init__(self) -> None:
         if self.kind not in LEGAL_OPS[self.task]:

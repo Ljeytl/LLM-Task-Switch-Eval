@@ -1,0 +1,129 @@
+"""Tests for the analysis tools.
+
+The taxonomy audit found a real scorer bug (D15) after being wrong twice itself — its
+identity parser split on whitespace, turning "olive oil" into "olive". A verifier is code
+too, so it gets tests.
+"""
+
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "tools"))
+
+from audit_taxonomy import (BUCKETS, canon_schedule, canon_shopping, entries,  # noqa: E402
+                            grounding_pass, identities, split_detail)
+
+
+# --- detail parsing ------------------------------------------------------------------
+
+@pytest.mark.parametrize("detail,expected", [
+    ("shopping_0:milk", ("shopping_0", "milk", "")),
+    ("shopping_0:olive oil", ("shopping_0", "olive oil", "")),
+    ("schedule_0:one-on-one wrong value", ("schedule_0", "one-on-one", "wrong value")),
+    ("shopping_1:wood glue false_assert", ("shopping_1", "wood glue", "false_assert")),
+    ("schedule_0:demo hallucination", ("schedule_0", "demo", "hallucination")),
+    ("schedule_0:retro stale", ("schedule_0", "retro", "stale")),
+    ("shopping_0:milk -> other task", ("shopping_0", "milk", "-> other task")),
+    ("shopping_0:screws from other task", ("shopping_0", "screws", "from other task")),
+])
+def test_split_detail_handles_multiword_identities_and_every_suffix(detail, expected):
+    """Regression: splitting on whitespace turned "olive oil" into "olive", so the
+    grounding check looked up a name that never existed and reported six false
+    ungrounded failures."""
+    assert split_detail(detail) == expected
+
+
+def test_split_detail_does_not_mistake_a_name_ending_in_a_suffix_word():
+    assert split_detail("shopping_0:sticky tape")[1] == "sticky tape"
+
+
+# --- canonicalisation ----------------------------------------------------------------
+
+def test_canon_schedule_reads_named_keys_and_both_positional_orders():
+    """A positional pair has no intrinsic order; decide by which element is a time."""
+    assert canon_schedule([{"time": "09:00", "title": "Standup"}]) == {"standup"}
+    assert canon_schedule([["09:00", "standup"]]) == {"standup"}
+    assert canon_schedule([["standup", "09:00"]]) == {"standup"}
+
+
+def test_canon_shopping_normalises_and_drops_blanks():
+    assert canon_shopping([" Milk ", "", "EGGS"]) == {"milk", "eggs"}
+
+
+def test_entries_keeps_values_so_a_wrong_time_is_visible():
+    """An identity-only view cannot see "present but at the wrong hour"."""
+    e = entries({"schedule_0": [{"time": "09:00", "title": "standup"}]})
+    assert e["schedule_0"] == {("09:00", "standup")}
+
+
+def test_identities_are_keyed_by_slot():
+    got = identities({"shopping_0": ["milk"], "shopping_1": ["screws"]})
+    assert got == {"shopping_0": {"milk"}, "shopping_1": {"screws"}}
+
+
+# --- grounding pass ------------------------------------------------------------------
+
+def _row(expected, reported, details, kinds):
+    return {"parse_ok": True, "expected": expected, "reported": reported,
+            "failure_details": details, "failures": kinds, "seed": 1,
+            "ordering": "blocked", "model": "m"}
+
+
+def test_grounding_accepts_a_real_dropped_item():
+    row = _row({"shopping_0": ["milk", "olive oil"]}, {"shopping_0": ["milk"]},
+               ["shopping_0:olive oil"], ["dropped"])
+    checked, ungrounded, _ = grounding_pass([row])
+    assert (checked, ungrounded) == (1, 0)
+
+
+def test_grounding_accepts_a_real_stale_duplicate():
+    row = _row({"schedule_0": [["14:30", "standup"]]},
+               {"schedule_0": [{"time": "11:30", "title": "standup"},
+                               {"time": "14:30", "title": "standup"}]},
+               ["schedule_0:standup stale"], ["absorbed"])
+    checked, ungrounded, _ = grounding_pass([row])
+    assert (checked, ungrounded) == (1, 0)
+
+
+def test_grounding_rejects_a_failure_that_names_nothing_real():
+    """The check must actually be capable of failing, or it proves nothing."""
+    row = _row({"shopping_0": ["milk"]}, {"shopping_0": ["milk"]},
+               ["shopping_0:caviar"], ["dropped"])
+    checked, ungrounded, problems = grounding_pass([row])
+    assert (checked, ungrounded) == (1, 1) and problems
+
+
+def test_grounding_skips_unparseable_rows():
+    row = _row({"shopping_0": ["milk"]}, None, [], [])
+    row["parse_ok"] = False
+    assert grounding_pass([row]) == (0, 0, [])
+
+
+# --- CLI smoke -----------------------------------------------------------------------
+
+@pytest.mark.parametrize("script", ["tools/power_analysis.py", "tools/audit_taxonomy.py"])
+def test_tool_runs_end_to_end_on_a_small_file(script, tmp_path: Path):
+    data = tmp_path / "rows.jsonl"
+    rows = []
+    for seed in range(6):
+        for ordering, ok in (("blocked", True), ("interleaved", seed % 2 == 0)):
+            rows.append({"model": "m:1", "label": "c", "cell": "t2_o6_n0", "seed": seed,
+                         "ordering": ordering, "joint_correct": ok, "parse_ok": True,
+                         "per_task_correct": {"shopping_0": ok}, "failures": [],
+                         "failure_details": [], "expected": {"shopping_0": []},
+                         "reported": {"shopping_0": []}, "n_tasks": 2, "n_ops": 6,
+                         "n_noise": 0})
+    data.write_text("\n".join(json.dumps(r) for r in rows))
+    r = subprocess.run([sys.executable, str(ROOT / script), str(data)],
+                       capture_output=True, text=True, cwd=ROOT)
+    assert r.returncode == 0, r.stderr[-800:]
+
+
+def test_buckets_cover_every_failure_enum_value():
+    from taskswitch.scorer import Failure
+    assert set(BUCKETS) == {f.value for f in Failure}

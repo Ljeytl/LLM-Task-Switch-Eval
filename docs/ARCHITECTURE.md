@@ -34,7 +34,7 @@ primary metric. Everything else in the repo exists to protect that property.
 | Module | Responsibility | Key invariant |
 |---|---|---|
 | `ops.py` | The operation grammar: `TaskKind`, `OpKind`, `Op` | Illegal (task, kind) pairs raise at construction. `INERT_KINDS` names the ops that must never move state. |
-| `state.py` | **The oracle.** `ShoppingState` (a set), `ScheduleState` (an ordered map), `ground_truth()` | `apply()` is *total* — it never raises, whatever it is handed. A crash here would be recorded as a model failure. |
+| `state.py` | **The oracle.** `ShoppingState` (a set), `ScheduleState` (an ordered map), `ground_truth()` | `apply()` is *total* — it never raises, whatever it is handed. A crash here would be recorded as a model failure. States are keyed by slot, not kind. |
 | `surface.py` | Natural-language rendering, ≥4 paraphrases per (task, kind) | Templated, never model-generated: a generated turn could say something the op list does not encode and break the answer key. |
 | `generator.py` | Op sampling, ordering, and **pairing** | Renders each op *once*, then reorders the rendered turns. Asserts the two orderings hold the identical multiset of strings. |
 | `runner.py` | Ollama client, response cache, runtime token verification | Only the final turn is generated. Assistant turns are prefilled with a fixed `"Got it."`. |
@@ -42,6 +42,29 @@ primary metric. Everything else in the repo exists to protect that property.
 | `stats.py` | Wilson, McNemar, paired bootstrap, clustered SE | See `STATS.md`. Every estimator is chosen over a more obvious alternative for a stated reason. |
 | `plots.py` | Dumbbell (primary), taxonomy bars | The dumbbell's *slope* is the switch cost. |
 | `run.py` | CLI: demo, calibrate, check-constrained, sweep, analyse, rescore | Checkpoints results after every cell so a long sweep is resumable. |
+
+## Task identity is a slot
+
+An `Op` carries `(task: TaskKind, slot: int)`. State buckets are keyed on
+`slot_key(task, slot)` — `shopping_0`, `shopping_1` — so two shopping lists in one
+conversation are two independent states.
+
+```
+tasks   = [SHOPPING, SCHEDULE, SHOPPING, SCHEDULE]
+slots   = [       0,        0,        1,        1]
+keys    = [shopping_0, schedule_0, shopping_1, schedule_1]
+labels  = [grocery list, work calendar, hardware list, personal calendar]
+```
+
+Each slot draws from a **disjoint vocabulary** (`surface.vocabulary`): grocery items,
+hardware items, work meetings, personal appointments. That is what keeps misattribution
+detectable — `screws` on the grocery list is unmistakable in a way that two generic
+lists would never be. Every surface template names its list explicitly, because with two
+lists of one kind an unnamed turn would be genuinely ambiguous, and an ambiguous turn
+makes the answer key *unanswerable* rather than merely hard.
+
+Keying on `TaskKind` instead capped the design at two tasks and silently merged a third
+into the first (`DECISIONS.md` D14 → D17).
 
 ## The three independent knobs
 
@@ -87,9 +110,20 @@ match the entire comparison depends on.
 Each `(seed, task, purpose)` gets its own RNG, derived with blake2b:
 
 ```python
-_subrng(seed, task.value, "mut", n_mut)   # the mutating operation stream
-_subrng(seed, task.value, "mix", n_noise, n_false)   # placement of inert turns
+_subrng(seed, slot_key, "mut", n_mut)        # the mutating operation stream
+_subrng(seed, slot_key, "mix", n_false)      # placement of inert turns
+_subrng(seed, "render", *op_identity, n)     # paraphrase choice, per op
 ```
+
+Keyed on the **slot**, so two shopping lists draw independently. `n_noise` is
+deliberately *absent* from the mix key: including it made every length condition draw a
+fresh placement rather than a nested one, so between-cell comparison carried placement
+variance (`LIMITATIONS.md` §4b). One pool is drawn and each condition takes a prefix.
+
+Rendering gets a generator **per op**, keyed on the op's slot, kind, payload and how many
+identical ops precede it. A single shared generator walked in list order picked different
+paraphrases for the same op as soon as anything earlier changed, which broke nesting just
+as surely as the placement did.
 
 This is not tidiness. An earlier version passed one shared RNG through every task, so
 generating noise for task 1 consumed a variable number of draws and shifted task 2's

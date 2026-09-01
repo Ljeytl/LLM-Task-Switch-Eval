@@ -1,9 +1,9 @@
 # taskswitch
 
-**Measuring what it costs a language model to juggle.** Two stateful tasks in one
-conversation, interleaved instead of blocked, with token count held constant so the
-cost being measured is *switching* and not context length — and that contrast repeated
-across three context lengths to see whether the cost grows with distance.
+**Measuring what it costs a language model to juggle.** Up to four stateful tasks in one
+conversation, interleaved instead of blocked, with token count held constant so the cost
+being measured is *switching* and not context length — repeated across three context
+lengths and four task counts to see what the cost actually scales with.
 
 > **Status:** research prototype. Findings are an existence proof on one synthetic
 > domain, not a benchmark. See [Limitations](docs/LIMITATIONS.md).
@@ -77,7 +77,7 @@ uv venv --python 3.12 .venv          # 3.14 has thin scipy/matplotlib wheel cove
 uv pip install --python .venv/bin/python -e ".[dev]"
 ollama pull qwen2.5-coder:7b
 
-.venv/bin/python -m pytest tests/ -q   # 355 tests, no model required
+.venv/bin/python -m pytest tests/ -q   # 538 tests, no model required
 .venv/bin/python run.py --demo         # 5 pairs, ~2 min
 ```
 
@@ -226,7 +226,7 @@ Three things I got wrong and had to fix:
 
 ## Validation
 
-- **355 tests**, none requiring a model. The two load-bearing ones assert that inert ops
+- **538 tests**, none requiring a model. The two load-bearing ones assert that inert ops
   mutate nothing, and that blocked and interleaved orderings of one op list produce
   identical ground truth.
 - **Token match verified at run time** against `prompt_eval_count` for every pair; drift
@@ -282,12 +282,16 @@ Approximately one working day of build time, on top of the design work recorded 
 
 - [ ] **Generative turns** — let the model reply to each turn. The only change that
       could move the *interpretation* rather than just the error bars. ~10× the compute.
-- [ ] **Nested noise pools**, so length conditions are supersets rather than independent
-      draws. Currently `n_noise` is in the RNG key, so between-cell trends carry
-      placement variance (the within-cell contrast is unaffected). Cheapest real fix.
-- [ ] **Per-instance task identity**, so a real task-count arm (2/3/4 concurrent tasks)
-      becomes possible. This is the question the project set out to answer and currently
-      does not.
+- [x] ~~**Nested noise pools**~~ — done in v2. `n_noise` removed from the RNG key; one
+      pool per slot, each condition takes a prefix.
+- [x] ~~**Per-instance task identity**~~ — done in v2 (D17). 1–4 concurrent tasks with
+      disjoint vocabularies per instance.
+- [ ] **Re-calibrate against v2 templates.** `n_ops = 6` was measured on v1 wording;
+      v2 turns are longer and the conditions came back harder. Same mistake as
+      calibrating one knob and changing another — see LIMITATIONS §4.
+- [ ] **Implicit list references.** v2 names the target list in every turn ("add milk to
+      my grocery list"). Real users say "add milk" and expect the assistant to infer
+      which list. That removes the routing problem, which is the easier half.
 - [ ] **A same-family scaling ladder** (Qwen2.5 3B/7B/14B) to replace a cross-model
       comparison that is currently confounded three ways.
 - [ ] **`n_pairs` at 120+**, which the power simulation says is the threshold for 80%
