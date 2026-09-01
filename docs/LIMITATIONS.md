@@ -100,6 +100,28 @@ The alternative — driving length with more operations — would have confounde
 with state-update load instead, which is worse, because that is the confound the whole
 project exists to remove. There is no clean third option within this design.
 
+**And it was calibrated against one model.** `--calibrate` was run on
+`qwen2.5-coder:7b` only; `n_ops = 6` is the value that put *that* model in the 0.6–0.8
+band. `gemma4:12b` then ran the same cells at the same difficulty setting and sat far
+higher. A single `n_ops` cannot put two models of different capability in the same band,
+so the cross-model rows are not comparing them at matched difficulty — they are comparing
+them at matched *task parameters*, which is a different and weaker thing.
+
+This does not invalidate either model's within-model contrast, which is what the paired
+design measures and which is unaffected by where the model sits on the difficulty curve.
+It does mean a null for the easier model is ambiguous between "this model does not pay a
+switch cost" and "this task is not taxing enough for this model to pay one." Per-model
+calibration — one `n_ops` per model, chosen to land each in the same accuracy band — is
+the fix. The harness already supports it (`--calibrate` takes `--model`); the gap is that
+I ran it once, on qwen, and then reused that `n_ops` for both:
+
+```bash
+python run.py --calibrate --model gemma4:12b     # never run
+```
+
+so this costs a calibration pass, not a redesign. I did not do it, and the cross-model
+reading has to carry the caveat.
+
 ---
 
 ## 4b. The length arm varies noise *placement* as well as quantity
