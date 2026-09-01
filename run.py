@@ -34,18 +34,19 @@ TASK_POOL = [TaskKind.SHOPPING, TaskKind.SCHEDULE]
 
 
 def tasks_for(n: int) -> list[TaskKind]:
-    """The first n distinct task kinds.
+    """`n` concurrent tasks, cycling the kinds.
 
-    Capped at the number of distinct kinds. Task identity IS TaskKind here, so cycling
-    the pool to reach 3 or 4 "tasks" would repeat a kind, and a repeated kind is not a
-    second concurrent task -- it merges into the first one's state. Supporting a real
-    task-count arm needs per-instance identity (two separately named shopping lists),
-    which is recorded as next work. See docs/DECISIONS.md D14.
+    Repeated kinds are fine: each becomes its own named instance with its own disjoint
+    vocabulary (D17), so [SHOPPING, SCHEDULE, SHOPPING] is a grocery list, a work
+    calendar and a hardware list -- three independent states.
+
+    This function kept a D14-era cap at two tasks long after D17 lifted it in the
+    library, and the sweep crashed on the first task-count cell. The tests called
+    `build_pair` directly with 3 and 4 tasks and passed, because nothing exercised this
+    boundary. `build_pair` enforces the real limit (how many distinct vocabularies
+    exist), so no cap belongs here.
     """
-    if n > len(TASK_POOL):
-        raise ValueError(f"n_tasks={n} exceeds the {len(TASK_POOL)} distinct task kinds "
-                         f"available; see docs/DECISIONS.md D14")
-    return TASK_POOL[:n]
+    return [TASK_POOL[i % len(TASK_POOL)] for i in range(n)]
 
 
 def row_of(res, sc, cell_extra: dict[str, Any] | None = None) -> dict[str, Any]:

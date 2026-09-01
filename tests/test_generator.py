@@ -205,3 +205,27 @@ def test_mutating_stream_is_invariant_to_noise_level(seed):
     b = [(o.key, o.kind.value, tuple(sorted(o.payload.items())))
          for o in sample_ops(seed, T2, 12, 2, 60) if o.mutating]
     assert a == b
+
+
+@pytest.mark.parametrize("n", [1, 2, 3, 4])
+def test_cli_tasks_for_builds_n_independent_states(n):
+    """Integration gap that cost a sweep. `build_pair` was tested directly with 3 and 4
+    tasks and passed, but nothing exercised run.py's task construction -- which still
+    carried a D14-era cap at two. 538 green tests and a broken entry point."""
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from run import tasks_for
+    tasks = tasks_for(n)
+    assert len(tasks) == n
+    b, i = build_pair(1, tasks, 6, 2, 0)
+    assert len(b.expected) == n
+    assert sorted(b.turns) == sorted(i.turns)
+
+
+def test_cli_tasks_for_cycles_kinds_rather_than_capping():
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from run import tasks_for
+    assert tasks_for(3) == [TaskKind.SHOPPING, TaskKind.SCHEDULE, TaskKind.SHOPPING]
