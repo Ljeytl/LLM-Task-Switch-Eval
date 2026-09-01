@@ -14,9 +14,9 @@ that back: a set and an ordered map are independently diffable, so the transcrip
 the answer key come out of one function as a pair.
 
 **Cost, stated honestly:** the tasks are far simpler than real assistant work. This is
-an existence proof that switch cost is separable and mechanically measurable, not a
-general benchmark. Lineage: MultiWOZ joint goal accuracy, tau-bench final-DB-state
-comparison.
+a prototype for mechanically measuring a matched-token ordering effect, not a general
+benchmark or a causal isolation of switch cost. Lineage: MultiWOZ joint goal accuracy,
+tau-bench final-DB-state comparison.
 
 ---
 
@@ -343,13 +343,14 @@ changed, so token counts and cache keys all differ. They are preserved under
 
 **Date:** 2026-09-01
 
-**Context.** The v2 task-count arm produced its headline finding — misattribution rising
-0 → 8 → 59 across 2, 3 and 4 tasks — and I nearly reported it as a task-count effect.
+**Context.** The v2 task-count arm produced a descriptive pattern — misattribution entries
+rising 0 → 8 → 59 across 2, 3 and 4 tasks — and I nearly reported it as a task-count effect.
 Checking the compositions first showed it is not cleanly one. `tasks_for(n)` deals from
 `[SHOPPING, SCHEDULE]` round-robin, so the count of *same-kind pairs* runs 0, 0, 1, 2 as
 n runs 1..4 — perfectly collinear with n across every cell in the sweep. Since kinds have
-disjoint vocabularies, a same-kind pair is the only place misattribution can occur at all.
-Task count and confusability were varying together and the design could not separate them.
+disjoint vocabularies, same-kind neighbours make cross-slot misattribution easier to
+observe. Task count and confusability were varying together and the design could not
+separate them.
 
 **Decision.** A config cell may name its kinds explicitly (`tasks: [shopping, shopping]`)
 instead of, or in place of, `n_tasks`. Added the `same_kind_2` cell to break the
@@ -371,9 +372,9 @@ collinearity.
 
 **Rejected: adding more task kinds instead.** Four distinct kinds would also break the
 collinearity, and more directly. It needs a third and fourth state machine, vocabulary and
-template set — roughly the same work as the original two — and it would answer a *different*
-question (does confusability matter?) less sharply than the one-line same-kind cell answers
-this one (is confusability what is actually driving the number I am about to report?).
+template set — roughly the same work as the original two. The same-kind cell is a useful
+probe, but because it also changes task mechanics and exposure it does not identify a
+causal similarity effect by itself.
 
 **What it revealed immediately.** `cell.get("tasks", cell["n_tasks"])` evaluates its
 default eagerly, so it raised `KeyError` on precisely the cells that supply `tasks` and no

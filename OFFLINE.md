@@ -17,7 +17,7 @@ end to end. If it prints `ALL CHECKS PASSED`, you are good to fly.
 
 | command | needs network? | notes |
 |---|---|---|
-| `.venv/bin/python -m pytest tests/ -q` | no | 597 tests, no model required |
+| `uv run --extra dev pytest tests/ -q` | no | no model required |
 | `.venv/bin/python run.py --analyse` | no | pure stats + plots over `results/sweep.jsonl` |
 | `.venv/bin/python run.py --rescore` | no | re-scores from the response cache, zero inference |
 | `.venv/bin/python tools/audit_taxonomy.py` | no | pure data |
@@ -48,9 +48,13 @@ open**, or run `ollama serve` in a spare terminal.
 and generation parameters. It is **gitignored** (it is large and machine-local) but it is
 on this machine, and it is what makes the offline workflow cheap:
 
-- `--rescore` replays the entire 480-conversation corpus through the scorer with **zero**
+- `--rescore` replays the entire 700-conversation corpus through the scorer with **zero**
   inference. Change the taxonomy, re-run, see the effect in seconds.
 - `--analyse` needs only `results/sweep.jsonl`.
+
+The complete 700-row v2 sweep is committed, so a fresh clone can run analysis and
+regenerate the public tables without Ollama or the private response cache. Rescoring
+requires the machine-local cache and fails closed if any response is missing.
 
 Do not delete `results/cache/` before the flight. If you do, everything still works, it
 just has to re-run inference.
@@ -86,14 +90,12 @@ is local.
 
 In rough order of payoff, and all of it runs on this machine:
 
-1. **Raise `n_pairs` on the primary cell.** `results/POWER.md` says n=30 gives ~20% power
-   against a 14-point effect; 120 pairs gets you to ~79%. Edit `n_pairs` in
-   `configs/main.yaml` and re-run — the cache means already-computed pairs are free, so
-   only the new seeds cost inference.
+1. **Counterbalance serial position and recency.** Rotate blocked-task order and the
+   interleaved starting slot before making a confirmatory switch-cost claim.
 2. **Fill in `results/audit_sample.jsonl`.** 50 blind failure cases with `human_label`
    set to `null`. Label them, then
    `python tools/audit_taxonomy.py --score results/audit_sample.jsonl` gives a real
    inter-rater agreement number, which the project currently does not have.
-3. **Nested noise pools** (`LIMITATIONS.md` §4b). Roughly ten lines in
-   `generator._subrng`; makes the length arm properly nested. Needs a full re-run.
+3. **Clean the ambiguous imperative templates and rerun.** Phrases such as “Stick X”
+   can make the verb look like part of the entity, creating instrument errors.
 4. **Read `prep/TALK.md` and argue with it** (local, gitignored).

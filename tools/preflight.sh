@@ -36,6 +36,7 @@ elif [ -s results/v1/sweep.jsonl ]; then
 else
   bad "no sweep data in results/ or results/v1/"
 fi
+DATA=results/sweep.jsonl; [ -s "$DATA" ] || DATA=results/v1/sweep.jsonl
 # Exact, not counted. Counting cache entries against rows undercounts by exactly the
 # size of the one-task control, whose two orderings render byte-identical prompts and so
 # legitimately share a single cache entry -- a complete cache reported as incomplete.
@@ -55,7 +56,7 @@ fi
 # a presence check passes happily. Compared by mtime, and only when the data is v2 and no
 # sweep is still writing to it.
 sweep_running=$(pgrep -f "run.py --config" >/dev/null 2>&1 && echo yes || echo no)
-for f in RESULTS.md POWER.md sample.jsonl dumbbell.png taxonomy.png; do
+for f in RESULTS.md POWER.md dumbbell.png taxonomy.png; do
   if [ -s "results/$f" ]; then
     if [ "$sweep_running" = yes ]; then
       ok "present: results/$f (sweep still running; staleness not checked)"
@@ -67,12 +68,23 @@ for f in RESULTS.md POWER.md sample.jsonl dumbbell.png taxonomy.png; do
   elif [ -s "results/v1/$f" ]; then ok "present: results/v1/$f (v1 archive)"
   else bad "missing: $f in results/ and results/v1/"; fi
 done
+if [ -s results/sample.jsonl ]; then
+  sample_check=$(mktemp "${TMPDIR:-/tmp}/taskswitch-sample.XXXXXX")
+  if $PY tools/make_sample.py "$DATA" "$sample_check" >/dev/null 2>&1 \
+      && cmp -s "$sample_check" results/sample.jsonl; then
+    ok "results/sample.jsonl matches the sweep by content"
+  else
+    bad "STALE: results/sample.jsonl does not match the sweep -- run: ./tools/finalize.sh"
+  fi
+  rm -f "$sample_check"
+else
+  bad "missing: sample.jsonl in results/"
+fi
 [ -s docs/WALKTHROUGH.md ] && ok "present: docs/WALKTHROUGH.md" || bad "missing: docs/WALKTHROUGH.md"
 
 echo "== 4. Offline commands actually run =="
 n_tests=$($PY -m pytest tests/ -q --collect-only 2>/dev/null | grep -oE "^[0-9]+ tests" | head -1)
 $PY -m pytest tests/ -q >/dev/null 2>&1 && ok "pytest (${n_tests:-suite} passing)" || bad "pytest failed"
-DATA=results/sweep.jsonl; [ -s "$DATA" ] || DATA=results/v1/sweep.jsonl
 $PY run.py --analyse --results "$DATA" >/dev/null 2>&1 && ok "run.py --analyse" || bad "run.py --analyse failed"
 $PY tools/audit_taxonomy.py "$DATA" >/dev/null 2>&1 && ok "tools/audit_taxonomy.py" || bad "audit failed"
 $PY tools/power_analysis.py "$DATA" >/dev/null 2>&1 && ok "tools/power_analysis.py" || bad "power analysis failed"

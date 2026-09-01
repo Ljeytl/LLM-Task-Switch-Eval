@@ -16,10 +16,17 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 
-from make_sample import stratified  # noqa: E402
-from audit_taxonomy import (BUCKETS, canon_schedule, canon_shopping, entries,  # noqa: E402
-                            grounding_pass, identities, split_detail)
-
+from audit_taxonomy import (
+    BUCKETS,
+    canon_schedule,
+    canon_shopping,
+    entries,
+    grounding_pass,
+    identities,
+    split_detail,
+)
+from check_cache_coverage import expected_cache_key
+from make_sample import stratified
 
 # --- detail parsing ------------------------------------------------------------------
 
@@ -92,6 +99,30 @@ def test_grounding_accepts_a_real_stale_duplicate():
     assert (checked, ungrounded) == (1, 0)
 
 
+def test_grounding_accepts_directional_misattribution_with_wrong_value_at_source():
+    row = _row(
+        {
+            "schedule_0": [["17:00", "design review"], ["17:30", "onboarding"]],
+            "schedule_1": [["16:30", "gym session"]],
+        },
+        {
+            "schedule_0": [
+                {"time": "17:00", "title": "design review"},
+                {"time": "17:30", "title": "onboarding"},
+                {"time": "16:30", "title": "gym session"},
+            ],
+            "schedule_1": [{"time": "17:30", "title": "gym session"}],
+        },
+        [
+            "schedule_0:gym session from other task",
+            "schedule_1:gym session -> other task",
+        ],
+        ["misattributed", "misattributed"],
+    )
+    checked, ungrounded, problems = grounding_pass([row])
+    assert (checked, ungrounded, problems) == (2, 0, [])
+
+
 def test_grounding_rejects_a_failure_that_names_nothing_real():
     """The check must actually be capable of failing, or it proves nothing."""
     row = _row({"shopping_0": ["milk"]}, {"shopping_0": ["milk"]},
@@ -108,6 +139,13 @@ def test_grounding_skips_unparseable_rows():
 
 # --- CLI smoke -----------------------------------------------------------------------
 
+def test_cache_coverage_key_uses_the_recorded_digest():
+    row = {"model": "m:1", "digest": "recorded", "seed": 1,
+           "ordering": "blocked", "tasks": ["shopping"], "n_tasks": 1,
+           "n_ops": 6, "n_false": 2, "n_noise": 0, "constrained": True}
+    assert expected_cache_key(row) != expected_cache_key({**row, "digest": "current"})
+
+
 @pytest.mark.parametrize("script", ["tools/power_analysis.py", "tools/audit_taxonomy.py"])
 def test_tool_runs_end_to_end_on_a_small_file(script, tmp_path: Path):
     data = tmp_path / "rows.jsonl"
@@ -122,8 +160,53 @@ def test_tool_runs_end_to_end_on_a_small_file(script, tmp_path: Path):
                          "n_noise": 0})
     data.write_text("\n".join(json.dumps(r) for r in rows))
     r = subprocess.run([sys.executable, str(ROOT / script), str(data)],
-                       capture_output=True, text=True, cwd=ROOT)
+                       capture_output=True, text=True, cwd=ROOT, check=False)
     assert r.returncode == 0, r.stderr[-800:]
+
+
+def test_taxonomy_default_command_preserves_committed_audit_sample(tmp_path: Path):
+    """Regression: the CLI used to overwrite the tracked review evidence on every run.
+
+    Keep the byte restoration in ``finally`` so this known-bad control is safe even when
+    evaluated against the old implementation.
+    """
+    sample = ROOT / "results" / "audit_sample.jsonl"
+    before = sample.read_bytes()
+    data = tmp_path / "rows.jsonl"
+    data.write_text(json.dumps({
+        "model": "m:1", "seed": 1, "ordering": "blocked", "parse_ok": True,
+        "failures": [], "failure_details": [], "expected": {"shopping_0": []},
+        "reported": {"shopping_0": []},
+    }) + "\n")
+
+    try:
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "tools/audit_taxonomy.py"), str(data)],
+            capture_output=True, text=True, cwd=ROOT, check=False,
+        )
+        assert result.returncode == 0, result.stderr[-800:]
+        assert sample.read_bytes() == before
+    finally:
+        if sample.read_bytes() != before:
+            sample.write_bytes(before)
+
+
+def test_taxonomy_writes_sample_only_to_explicit_output(tmp_path: Path):
+    data = tmp_path / "rows.jsonl"
+    output = tmp_path / "audit_sample.jsonl"
+    data.write_text(json.dumps({
+        "model": "m:1", "seed": 1, "ordering": "blocked", "parse_ok": True,
+        "failures": ["dropped"], "failure_details": ["shopping_0:milk"],
+        "expected": {"shopping_0": ["milk"]}, "reported": {"shopping_0": []},
+    }) + "\n")
+
+    result = subprocess.run(
+        [sys.executable, str(ROOT / "tools/audit_taxonomy.py"), str(data),
+         "--output", str(output)],
+        capture_output=True, text=True, cwd=ROOT, check=False,
+    )
+    assert result.returncode == 0, result.stderr[-800:]
+    assert len(output.read_text().splitlines()) == 1
 
 
 def test_buckets_cover_every_failure_enum_value():

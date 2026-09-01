@@ -9,6 +9,11 @@ ever went through the entry point. Green tests coexisted with a broken binary. A
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
+
 import pytest
 import yaml
 
@@ -151,8 +156,6 @@ class TestRescoreReconstruction:
 
     @staticmethod
     def _rows():
-        import json
-        from pathlib import Path
         for name in ("results/sample.jsonl", "results/sweep.jsonl"):
             p = Path(name)
             if p.exists() and p.stat().st_size > 1:
@@ -178,3 +181,89 @@ class TestRescoreReconstruction:
         assert tasks == default_tasks(3)
         blocked, _ = build_pair(7, tasks, 6, 2, 40)
         assert blocked.cell == "t3_o6_n40", "legacy ids must survive the signature change"
+
+
+def test_analyse_reports_raw_and_adjusted_pvalues(capsys, tmp_path, monkeypatch):
+    def pair(model, label, blocked, interleaved):
+        rows = []
+        for seed, (b, i) in enumerate(zip(blocked, interleaved), 1):
+            common = {"seed": seed, "model": model, "cell": label, "label": label,
+                      "parse_ok": True, "token_matched": True,
+                      "per_task_correct": {}, "failures": []}
+            rows.append({**common, "ordering": "blocked", "joint_correct": b})
+            rows.append({**common, "ordering": "interleaved", "joint_correct": i})
+        return rows
+
+    rows = pair("qwen2.5-coder:7b", "len_medium", [True] * 6, [False] * 6)
+    rows += pair("qwen2.5-coder:7b", "tasks_4", [True] * 6, [False] * 6)
+    rows += pair("gemma4:12b", "len_long", [True] * 6, [False] * 6)
+    monkeypatch.setattr(R, "RESULTS", tmp_path)
+    with patch.object(R, "dumbbell"), patch.object(R, "taxonomy_bars"):
+        R.analyse(rows)
+    output = capsys.readouterr().out
+    assert "raw p" in output and "Bonf p" in output
+    assert "Exploratory Bonferroni family: m=2" in output
+    assert "len_medium      primary" in output
+    assert "tasks_4         exploratory" in output
+
+
+def test_rescore_cache_miss_aborts_before_overwriting_source(tmp_path, monkeypatch):
+    blocked, interleaved = build_pair(1, [TaskKind.SHOPPING], 6, 2, 0)
+    model = {"model": "test", "digest": "digest"}
+    rows = []
+    for conv in (blocked, interleaved):
+        rows.append({
+            **model, "seed": conv.seed, "ordering": conv.ordering.value,
+            "cell": conv.cell, "label": "ctrl_1task", "n_tasks": 1,
+            "tasks": [TaskKind.SHOPPING.value], "n_ops": 6, "n_noise": 0,
+            "n_false": 2, "constrained": True, "joint_correct": False,
+        })
+    src = tmp_path / "sweep.jsonl"
+    R.write_jsonl(rows, src)
+    before = src.read_bytes()
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    monkeypatch.setattr(R, "CACHE_DIR", cache_dir)
+
+    with (patch.object(R, "run_conversation", side_effect=AssertionError) as inference,
+          pytest.raises(SystemExit, match=r"aborted before writing.*2 missing")):
+        R.cmd_rescore(SimpleNamespace(results=str(src)))
+
+    inference.assert_not_called()
+    assert src.read_bytes() == before
+
+
+def test_rescore_replays_complete_cache_without_inference(tmp_path, monkeypatch):
+    blocked, interleaved = build_pair(1, [TaskKind.SHOPPING], 6, 2, 0)
+    model = R.ModelSpec(name="test", digest="recorded")
+    rows = []
+    for conv in (blocked, interleaved):
+        rows.append({
+            "model": model.name, "digest": model.digest, "seed": conv.seed,
+            "ordering": conv.ordering.value, "cell": conv.cell,
+            "label": "ctrl_1task", "n_tasks": 1,
+            "tasks": [TaskKind.SHOPPING.value], "n_ops": 6, "n_noise": 0,
+            "n_false": 2, "constrained": True, "joint_correct": False,
+            "token_matched": True, "token_delta": 0,
+        })
+    src = tmp_path / "sweep.jsonl"
+    R.write_jsonl(rows, src)
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    monkeypatch.setattr(R, "CACHE_DIR", cache_dir)
+    key = R.cache_key(blocked, model, True)
+    (cache_dir / f"{key}.json").write_text(json.dumps({
+        "content": '{"shopping_0":[]}', "prompt_eval_count": 10,
+        "eval_count": 4, "wall": 0.1, "retries": 0, "error": "",
+    }))
+
+    with (patch.object(R, "run_conversation", side_effect=AssertionError) as inference,
+          patch.object(R, "resolve_model", side_effect=AssertionError) as lookup,
+          patch.object(R, "analyse")):
+        R.cmd_rescore(SimpleNamespace(results=str(src)))
+
+    inference.assert_not_called()
+    lookup.assert_not_called()
+    rescored = R.read_jsonl(src)
+    assert len(rescored) == 2
+    assert all(row["parse_ok"] for row in rescored)

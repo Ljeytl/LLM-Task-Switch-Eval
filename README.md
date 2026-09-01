@@ -1,62 +1,65 @@
 # taskswitch
 
-**Measuring what it costs a language model to juggle.** Up to four stateful tasks in one
-conversation, interleaved instead of blocked, with token count held constant so the cost
-being measured is *switching* and not context length — repeated across three context
-lengths and four task counts to see what the cost actually scales with.
+**Measuring ordering effects when a language model has several live task states.** The
+same operations are presented blocked or interleaved, with token count held constant,
+across three context lengths and up to four tasks.
 
-> **Status:** research prototype. Findings are an existence proof on one synthetic
-> domain, not a benchmark. See [Limitations](docs/LIMITATIONS.md).
+> **Status:** research prototype, not a benchmark. The prespecified primary comparison
+> was inconclusive; the remaining patterns are exploratory. See
+> [Limitations](docs/LIMITATIONS.md).
 
-**Headline (v2).** Switch cost scales with **how many tasks are live**, not with how much
-context separates their mentions. On `qwen2.5-coder:7b`, at a fixed token count and a
-fixed total number of operations:
+**Primary result.** On `qwen2.5-coder:7b`, the repository-prespecified two-task,
+medium-context comparison estimated a −12.0 percentage-point ordering difference, with a
+95% paired-bootstrap interval of [−36.0, +12.0] and exact McNemar p=0.508. At n=25, that
+is inconclusive: it establishes neither a switch cost nor its absence.
 
-| live tasks | delta | 95% CI | p | misattribution events |
+**Exploratory pattern.** At a fixed token count and fixed total operation count, qwen's
+point estimates became more negative as the number of live states increased:
+
+| live tasks | delta | 95% paired-bootstrap interval | raw p | misattribution entries |
 |---:|---:|---|---:|---:|
 | 2 | −12.0pp | [−36.0, +12.0] | 0.508 | 0 |
 | 3 | −20.0pp | [−36.0, −4.0] | 0.063 | 8 |
-| 4 | **−28.0pp** | [−48.0, −8.0] | **0.039** | 59 |
+| 4 | −28.0pp | [−48.0, −8.0] | 0.039 | 59 |
 
-| context padding | delta | 95% CI | p |
+| context padding | delta | 95% paired-bootstrap interval | raw p |
 |---:|---:|---|---:|
 | 0 noise turns | −16.0pp | [−36.0, +0.0] | 0.219 |
 | 40 noise turns | −12.0pp | [−36.0, +12.0] | 0.508 |
 | 120 noise turns | −12.0pp | [−36.0, +12.0] | 0.508 |
 
-One arm is monotone, the other is flat. Read as *exploratory* — the pre-registered
-primary is the 2-task cell and it is null, individual cells are underpowered at n=25, and
-the trend rather than any single cell is the signal. But the dissociation is the shape the
-crossed design was built to detect, and it is the opposite of what a context-length
-explanation predicts.
+The corresponding context-padding estimates were −16, −12 and −12 points. This is a
+hypothesis-generating shape, not a demonstrated trend or interaction: the cells are
+underpowered, no formal trend test was prespecified, task composition changes with task
+count, and the exploratory p-values require familywise correction.
 
-**Headline (v2, mechanism).** v1 found **zero misattribution in 480 conversations** and could not
-say whether models simply do not misfile, or whether a shopping list and a calendar are
-too dissimilar to confuse. v2 answers it: put **two lists of the same kind** in one
-conversation and misattribution appears immediately — 8 events in 50 conversations,
-every one of them a grocery item landing on the hardware list, versus **0 in 300**
-two-task conversations. *The v1 zero was a property of the instrument, not of the model.*
+**Most useful mechanism probe.** v1 observed zero misattribution across dissimilar task
+kinds. In v2, adding a same-kind neighbour was sufficient to expose misattribution in
+qwen: the instrument recorded 12 discrepancy entries in `same_kind_2`, versus zero in
+the matched two-task different-kind cell. Those are descriptive, conversation-clustered
+taxonomy entries rather than independent events; they do not establish that similarity
+is necessary or that task count has no effect.
 
-**What we found.** Across 600 conversations at *exactly* matched token counts (600/600
-verified, zero drift), the **pre-registered primary comparison found no detectable switch
-cost** — −12.0pp at p=0.508 — and at n=25 per cell it had little power to (§9). The
-exploratory cells are where the structure is, and it is a **dissociation**: switch cost
-tracks the number of live states and is flat in context length.
+**What the run supports.** Across 700 conversations, all 700 blocked/interleaved members
+matched their partner's token count exactly. The paired outcomes show that ordering often
+changes whether a conversation succeeds, but the current design does not attribute every
+difference solely to switching: fixed blocked-task order also changes serial position and
+recency. Treat the table as evidence that the manipulation is measurable and worth a
+counterbalanced confirmatory run.
 
 | arm | `qwen2.5-coder:7b` | `gemma4:12b` |
 |---|---|---|
 | length (0 / 40 / 120 noise turns) | −16 / −12 / −12 pp | +8 / +8 / −12 pp |
 | task count (2 / 3 / 4 tasks) | −12 / −20 / **−28** pp | +8 / −4 / −8 pp |
 
-Both models degrade monotonically as live states are added, and neither shows a length
-trend. The magnitude is strongly model-specific — qwen loses 28 points at four tasks
-(p=0.039), gemma 8 — so this is a shape both models share, not a constant.
+Both models' task-count point estimates become more negative, but the primary is
+inconclusive and no exploratory cell remains significant after familywise correction.
+The cross-model comparison is descriptive because family, tuning, size and calibrated
+difficulty all change together.
 
-**Read the task-count arm with its confound attached — and then read the cell that
-resolves it.** Under the canonical composition the number of *same-kind pairs* rises in
-lockstep with task count, and a same-kind pair is the only place a misattribution can
-occur. `same_kind_2` (two tasks, one same-kind pair) breaks the collinearity, on
-`qwen2.5-coder:7b`:
+**Read the task-count arm with its confound attached.** Under the canonical composition,
+the number of same-kind pairs rises with task count. `same_kind_2` adds one targeted
+comparison on `qwen2.5-coder:7b`:
 
 | cell | tasks | same-kind pairs | misattribution |
 |---|---:|---:|---:|
@@ -65,17 +68,18 @@ occur. `same_kind_2` (two tasks, one same-kind pair) breaks the collinearity, on
 | `tasks_3` | 3 | 1 | 8 |
 | `tasks_4` | 4 | 2 | 59 |
 
-Hold pairs at 1 and raise tasks 2 → 3: misattribution goes **12 → 8**. Hold tasks at 2 and
-raise pairs 0 → 1: **0 → 12**. **Similarity drives misattribution; task count does not.**
-Interleaving amplifies it 1.7x overall (5x in `same_kind_2`) but is not required —
-blocked ordering produces 29 of the 79 events. `gemma4:12b` records **zero misattribution
-in all 350 of its conversations**, same-kind cells included.
+At fixed task count, adding a same-kind neighbour changed the observed count from 0 to
+12. At one same-kind pair, moving from two to three tasks changed it from 12 to 8. This
+shows that the original monotone task-count story was not identified; it does not by
+itself estimate a causal similarity or task-count effect. Interleaved conversations
+contained more such entries descriptively, while blocked conversations still produced
+29 of 79. `gemma4:12b` recorded zero across its 350 conversations.
 
-That cell also produced the largest single effect in the sweep. At identical task count,
-operations and padding, swapping the second task from a calendar to a second shopping list
-takes qwen from **0.640 blocked to 0.000** — two *similar* tasks are harder than four
-*dissimilar* ones (0.400). It is on the floor, so its ordering delta says nothing; gemma's
-copy is not (0.880 → 0.720, zero misattribution) and shows no switch cost.
+The same-kind qwen cell landed on the floor: blocked accuracy moved from 0.640 in the
+different-kind two-task cell to 0.000. That comparison changes task structure and surface
+semantics together, so it is a diagnostic result, not a clean similarity effect. Its
+ordering delta is uninterpretable at the floor. Gemma's copy was not on the floor
+(0.880 → 0.720 blocked) and showed no detectable ordering cost.
 
 ![switch cost](results/dumbbell.png)
 
@@ -93,8 +97,10 @@ The existing multi-turn benchmarks measure something else: a single task that *e
 Benchmark](https://arxiv.org/abs/2409.20222) does interleave concurrent tasks and found
 that it hurts — but it varies interleaving and context length together.
 
-The claim here is deliberately narrow: not that nobody *measures* interleaving, but that
-nobody **isolates** it from context length. This does.
+The intended contribution is deliberately narrow: a mechanically graded, paired,
+matched-token instrument for comparing blocked and interleaved concurrent state updates.
+The current run is exploratory because serial position and recency are not yet
+counterbalanced.
 
 **Who it is for:** anyone choosing a model for an assistant that holds state across a
 conversation, and anyone who has to defend that choice.
@@ -121,20 +127,11 @@ prefilled with a fixed `"Got it."`, so the two prompts are the identical multise
 strings in a different order and cannot tokenise differently. Verified at run time
 against Ollama's own `prompt_eval_count`, not estimated.
 
-Any accuracy delta is switch and re-entry cost.
+An accuracy delta is an ordering effect under this instrument. A confirmatory switch-cost
+claim requires counterbalancing blocked-task order and interleaved starting position.
 
 See [`docs/WALKTHROUGH.md`](docs/WALKTHROUGH.md) for one conversation traced end to end,
 generated from real output.
-
-### Sequential related bugs (`bugqueue`)
-
-Models piling defect reports before fixes land vs report-fix pacing on one module
-(`checkout.py`). See [`docs/BUGQUEUE.md`](docs/BUGQUEUE.md).
-
-```bash
-.venv/bin/python -m pytest tests/test_bugqueue.py -q
-.venv/bin/python run_bugs.py --demo
-```
 
 > **Working offline?** Run `./tools/preflight.sh` while you still have wifi — it verifies
 > the venv, models, cache and every offline command end to end. See
@@ -147,7 +144,7 @@ uv venv --python 3.12 .venv          # 3.14 has thin scipy/matplotlib wheel cove
 uv pip install --python .venv/bin/python -e ".[dev]"
 ollama pull qwen2.5-coder:7b
 
-.venv/bin/python -m pytest tests/ -q   # 597 tests, no model required
+.venv/bin/python -m pytest tests/ -q   # no model required
 .venv/bin/python run.py --demo         # 5 pairs, ~2 min
 ```
 
@@ -171,53 +168,53 @@ data by `tools/make_readme_results.py` so the numbers cannot drift from the run.
 analysis in [`results/POWER.md`](results/POWER.md).
 
 <!-- BEGIN:results-table -->
-| model | condition | blocked | interleaved | delta (pp) | McNemar b/c | p |
-|---|---|---:|---:|---:|---|---:|
-| `gemma4:12b` | ctrl_1task *(control)* | 0.760 | 0.760 | +0.0 | 0/0 | 1.000 |
-| `gemma4:12b` | len_short | 0.800 | 0.880 | +8.0 | 0/2 | 0.500 |
-| `gemma4:12b` | len_medium | 0.880 | 0.960 | +8.0 | 0/2 | 0.500 |
-| `gemma4:12b` | len_long | 0.960 | 0.840 | -12.0 | 4/1 | 0.375 |
-| `gemma4:12b` | same_kind_2 | 0.720 | 0.760 | +4.0 | 3/4 | 1.000 |
-| `gemma4:12b` | tasks_3 | 0.680 | 0.640 | -4.0 | 4/3 | 1.000 |
-| `gemma4:12b` | tasks_4 | 0.720 | 0.640 | -8.0 | 4/2 | 0.688 |
-| `qwen2.5-coder:7b` | ctrl_1task *(control)* | 0.320 | 0.320 | +0.0 | 0/0 | 1.000 |
-| `qwen2.5-coder:7b` | len_short | 0.840 | 0.680 | -16.0 | 5/1 | 0.219 |
-| `qwen2.5-coder:7b` | **len_medium (PRIMARY)** | 0.640 | 0.520 | -12.0 | 6/3 | 0.508 |
-| `qwen2.5-coder:7b` | len_long | 0.560 | 0.440 | -12.0 | 6/3 | 0.508 |
-| `qwen2.5-coder:7b` | same_kind_2 | 0.000 | 0.040 | +4.0 | 0/1 | 1.000 |
-| `qwen2.5-coder:7b` | tasks_3 | 0.400 | 0.200 | -20.0 | 5/0 | 0.062 |
-| `qwen2.5-coder:7b` | tasks_4 | 0.400 | 0.120 | **-28.0** | 8/1 | **0.039** |
+| model | condition | blocked | interleaved | delta (pp) | McNemar b/c | raw p | Bonferroni p |
+|---|---|---:|---:|---:|---|---:|---:|
+| `gemma4:12b` | ctrl_1task *(control)* | 0.760 | 0.760 | +0.0 | 0/0 | 1.000 | — |
+| `gemma4:12b` | len_short *(exploratory)* | 0.800 | 0.880 | +8.0 | 0/2 | 0.500 | 1.000 |
+| `gemma4:12b` | len_medium *(exploratory)* | 0.880 | 0.960 | +8.0 | 0/2 | 0.500 | 1.000 |
+| `gemma4:12b` | len_long *(exploratory)* | 0.960 | 0.840 | -12.0 | 4/1 | 0.375 | 1.000 |
+| `gemma4:12b` | same_kind_2 *(exploratory)* | 0.720 | 0.760 | +4.0 | 3/4 | 1.000 | 1.000 |
+| `gemma4:12b` | tasks_3 *(exploratory)* | 0.680 | 0.640 | -4.0 | 4/3 | 1.000 | 1.000 |
+| `gemma4:12b` | tasks_4 *(exploratory)* | 0.720 | 0.640 | -8.0 | 4/2 | 0.688 | 1.000 |
+| `qwen2.5-coder:7b` | ctrl_1task *(control)* | 0.320 | 0.320 | +0.0 | 0/0 | 1.000 | — |
+| `qwen2.5-coder:7b` | len_short *(exploratory)* | 0.840 | 0.680 | -16.0 | 5/1 | 0.219 | 1.000 |
+| `qwen2.5-coder:7b` | **len_medium (PRIMARY)** | 0.640 | 0.520 | -12.0 | 6/3 | 0.508 | — |
+| `qwen2.5-coder:7b` | len_long *(exploratory)* | 0.560 | 0.440 | -12.0 | 6/3 | 0.508 | 1.000 |
+| `qwen2.5-coder:7b` | same_kind_2 *(exploratory)* | 0.000 | 0.040 | +4.0 | 0/1 | 1.000 | 1.000 |
+| `qwen2.5-coder:7b` | tasks_3 *(exploratory)* | 0.400 | 0.200 | -20.0 | 5/0 | 0.062 | 0.688 |
+| `qwen2.5-coder:7b` | tasks_4 *(exploratory)* | 0.400 | 0.120 | -28.0 | 8/1 | 0.039 | 0.430 |
 <!-- END:results-table -->
 
 Three things to read carefully:
 
-**The primary is null, and I am reporting it as the primary.** `len_medium` came back at
+**The primary is inconclusive, and I am reporting it as the primary.** `len_medium` came back at
 −12.0pp, p=0.508. Its discordant counts were b=6, c=3 — interleaving broke six
 conversations and fixed three, and nine discordant pairs cannot separate a real 12-point
 effect from noise. A 12-point point estimate with a CI spanning [−36, +12] is not evidence
 of an effect and not evidence of its absence; it is an underpowered cell
-(see [POWER.md](results/POWER.md)). `tasks_4` reached p=0.039, and promoting it to the
-headline for that reason is precisely what pre-registration exists to prevent — so it is
-reported below as exploratory, with its confound attached.
+(see [POWER.md](results/POWER.md)). `tasks_4` reached raw p=0.039, but it is exploratory
+and does not survive familywise correction. Promoting it to the headline would be
+selecting on the result, so it is reported with its confounds attached.
 
-**Ordering-stability differs sharply between models.** Discordance — the share of
-conversations whose outcome *changed* with ordering — runs 27–47% for
-`qwen2.5-coder:7b` and 0–17% for `gemma4:12b`. That is a stronger statement than the
-accuracy deltas, and only a paired design can see it. Caveat in force: the two models
-differ in family, instruction tuning and size simultaneously, so this is **descriptive,
-not evidence about scale**.
+**The paired design exposes outcome instability that marginal accuracy hides.** Across
+non-control cells, discordance — the share of conversations whose outcome *changed* with
+ordering — ranges 4–36% for `qwen2.5-coder:7b` and 8–28% for `gemma4:12b`. Those ranges
+overlap and include heterogeneous cells; they are descriptive, not evidence of a model
+ranking or scale effect.
 
-**Noise sensitivity is a property of the model, not the task, and the two models move in
-opposite directions.** Blocked accuracy across the length arm (0 → 40 → 120 padding turns,
+**Noise sensitivity was model-dependent in this run, and the two models move in opposite
+directions.** Blocked accuracy across the length arm (0 → 40 → 120 padding turns,
 identical seeds): `qwen2.5-coder:7b` falls **0.840 → 0.640 → 0.560**, while `gemma4:12b`
 *rises* **0.800 → 0.880 → 0.960**. Padding costs one model 28 points and gains the other
 16. I originally wrote this up as a general finding about context padding from the qwen
 data alone, before gemma had run; it is not general, and the v2 data make the sign
-disagreement sharper than v1 did. Note what this does to the length arm: "no length
-effect" is a statement about the *ordering delta*, not about difficulty — length moves
-accuracy a great deal, just not the gap between orderings.
+disagreement sharper than v1 did. The qwen ordering-delta point estimates are nearly flat
+across the length arm (−16, −12, −12 points), while gemma's change direction (+8, +8,
+−12). With n=25 and no formal trend test, neither pattern establishes how context length
+changes the ordering effect.
 
-### What actually goes wrong
+### What actually went wrong in v1
 
 | failure mode | share |
 |---|---:|
@@ -228,7 +225,8 @@ accuracy a great deal, just not the gap between orderings.
 | dropped / wrong value | 2.6% |
 | **misattributed** | **0.0%** |
 
-Misattribution was the failure this design was built to detect — the two task types were
+This archived v1 table is retained because it motivated the v2 instrument change.
+Misattribution was the failure the design was built to detect — the two task types were
 chosen so a grocery item in a schedule would be unmissable. It occurred **zero times in
 480 conversations** in v1, which could not say whether models simply do not misfile across
 dissimilar tasks or whether two tasks was too few for misfiling to arise. v2 can
@@ -250,7 +248,8 @@ Full log with rejected alternatives: [`docs/DECISIONS.md`](docs/DECISIONS.md).
   not lengthen the conversation.
 - **Context length varied with noise turns, not more operations**, so length does not
   ride along with state-update load.
-- **Calibration before the sweep.** Not optional — see below.
+- **Calibration before the sweep.** v1 calibration prevented a floor result, but it did
+  not transfer cleanly after v2 changed the templates and noise construction.
 - **A 1-task negative control.** With nothing to interleave the delta must be exactly
   zero; a non-zero result there would mean the harness manufactures differences.
 
@@ -315,12 +314,14 @@ Three things I got wrong and had to fix:
 
 ## Validation
 
-- **538 tests**, none requiring a model. The two load-bearing ones assert that inert ops
-  mutate nothing, and that blocked and interleaved orderings of one op list produce
+- **A model-free test suite** whose load-bearing checks assert that inert operations
+  mutate nothing and that blocked and interleaved orderings of one operation list produce
   identical ground truth.
 - **Token match verified at run time** against `prompt_eval_count` for every pair; drift
   is reported and drifting pairs are excluded.
-- **Difficulty calibrated before the sweep** so conditions sit in a measurable band.
+- **Difficulty measured before v1**, which prevented the planned `n_ops=24` floor. The
+  v2 template change invalidated that calibration; the primary remained measurable, but
+  current calibration is an acknowledged gap rather than a completed validation gate.
 - **Format failures counted separately** from state failures and excluded from state
   accuracy, so a formatting problem is never reported as a tracking problem.
 - **Constrained vs free-form decoding measured, not assumed** (`run.py
@@ -336,9 +337,9 @@ Three things I got wrong and had to fix:
 - **Taxonomy grounding audit** (`tools/audit_taxonomy.py`): every failure the scorer
   emits is checked against the actual expected-vs-reported diff. It found a real
   mislabelling — stale values reported as hallucinations — which no accuracy number
-  would ever have surfaced. It also writes a blind sample for human review; until that
-  is filled in, this project has a *grounding* check, not an inter-rater *agreement*
-  number, and says so.
+  would ever have surfaced. Until the optional human review sample is filled in, this
+  project has a *grounding* check, not an inter-rater *agreement* number, and says so.
+  With `--output`, the tool can write that blind review sample explicitly.
 - `run.py --rescore` recomputes every score from cache with no inference, so the
   taxonomy can be revised without paying for the sweep twice. Re-scoring after the
   taxonomy fix changed the labels and **0 outcomes**, confirming diagnosis and scoring
@@ -372,6 +373,10 @@ Approximately one working day of build time, on top of the design work recorded 
 
 ## Next
 
+- [ ] **Counterbalance task order and recency** — rotate blocked-task order and the
+      interleaved starting slot before treating the ordering delta as causal switch cost.
+- [ ] **Replace ambiguous imperative templates** such as “Stick X” and “Book Y,” then
+      rerun affected prompts rather than post-hoc normalising inspected outputs.
 - [ ] **Generative turns** — let the model reply to each turn. The only change that
       could move the *interpretation* rather than just the error bars. ~10× the compute.
 - [x] ~~**Nested noise pools**~~ — done in v2. `n_noise` removed from the RNG key; one

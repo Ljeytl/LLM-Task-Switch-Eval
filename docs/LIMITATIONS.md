@@ -53,7 +53,7 @@ task-irrelevant content" move together. A result showing switch cost rising with
 cannot distinguish "the model struggles with distance" from "the model struggles with
 distractors."
 
-The run made clear this is not a minor caveat — **for one of the two models**. On
+The v1 run made clear this is not a minor caveat — **for one of the two models**. On
 `qwen2.5-coder:7b`, blocked joint accuracy fell from **0.90 at zero noise to 0.47 with 40
 noise turns**, a 43-point drop from padding alone, more than double the largest switch
 cost measured anywhere in the sweep. On `gemma4:12b`, the identical padding on the
@@ -61,8 +61,8 @@ identical seeds moved accuracy from **0.90 to 0.97** — no cost at all.
 
 I wrote the general version of this claim ("noise is a difficulty driver, not neutral
 padding") from the qwen data before gemma4 had run. It is not general. Noise sensitivity
-is a property of the model, and a single-model result would have shipped it as a property
-of the design.
+was model-dependent in this run, and a single-model result would have shipped it as a
+property of the design.
 
 **The v2 refactor invalidated the calibration a second time.** `n_ops = 6` was measured
 against v1 templates. v2 names the target list in every turn ("add milk to my grocery
@@ -186,7 +186,7 @@ raise misattribution sharply.
 
 ---
 
-## 5b. Misattribution is driven by similarity, not by task count — the confound, and how it resolved
+## 5b. A same-kind neighbour exposes misattribution — the confound and the probe
 
 The task-count arm produced a clean monotone story: misattribution **0 → 8 → 59** across
 2, 3 and 4 tasks. The obvious reading is that concurrent tasks interfere and more tasks
@@ -198,8 +198,8 @@ different kinds draw disjoint vocabularies — rose in lockstep with task count.
 and task count were perfectly collinear across every cell in the sweep, so the design
 could not attribute the effect to either.
 
-`same_kind_2` (`tasks: [shopping, shopping]`, D18) breaks the collinearity: two tasks, one
-same-kind pair. **`qwen2.5-coder:7b`:**
+`same_kind_2` (`tasks: [shopping, shopping]`, D18) adds a two-task, one-pair probe.
+**`qwen2.5-coder:7b`:**
 
 | condition | tasks | same-kind pairs | misattribution events | conversations |
 |---|---:|---:|---:|---|
@@ -212,10 +212,11 @@ Read the middle two rows against each other: **pair count held at 1, task count 
 from 2 to 3, and misattribution went 12 → 8** — down, not up. Read the first two: task
 count held at 2, pair count raised from 0 to 1, and it went **0 → 12**.
 
-**Task count does not drive misattribution. A confusable neighbour does.** The claim I
-nearly published — that misattribution scales with the number of concurrent tasks — was
-wrong, and the arm that appeared to show it would have shown it just as convincingly if
-the mechanism had been anything else that happened to co-vary.
+The probe shows that a same-kind neighbour is sufficient to expose misattribution in this
+instrument and that the original monotone task-count explanation was not identified.
+It does **not** establish necessity or estimate a causal task-count-versus-similarity
+effect: these are small, conversation-clustered discrepancy counts, not independent
+events, and task composition and operations per task also change.
 
 What remains unseparated is the jump at two pairs (8–12 events at one pair, 59 at two).
 That is superlinear rather than additive, but `tasks_4` is the only two-pair cell, so
@@ -223,7 +224,7 @@ whether that is a pair-count effect or a four-task effect is exactly the ambigui
 section began with, one level up. Saying so is cheaper than running the cell that would
 settle it, and I have not run it.
 
-### Similarity is necessary; interleaving amplifies it
+### Descriptive counts by ordering
 
 Splitting the events by ordering, on qwen:
 
@@ -235,22 +236,14 @@ Splitting the events by ordering, on qwen:
 | `tasks_4` | 2 | 25 (11/25) | 34 (12/25) | 1.4x |
 | **total** | | **29** | **50** | **1.7x** |
 
-Two claims, and only the first is about the design's headline variable:
+Zero entries were observed in zero-pair cells, and more entries were observed under
+interleaving in the same-kind cells. These ratios have no interval or inferential test,
+and multiple entries can come from one conversation. They are descriptive diagnostics,
+not proof that similarity is necessary or that interleaving causally amplifies the rate.
+Blocked ordering still produces 29 entries, so interleaving is not required for the
+instrument to observe the failure.
 
-1. **Similarity is necessary.** Zero events in every zero-pair cell, under *both*
-   orderings, across 200 qwen conversations. No amount of interleaving produces a
-   misattribution when there is nothing confusable to misattribute to.
-2. **Interleaving amplifies it substantially** — 1.7x overall, and 5x in `same_kind_2`,
-   the cleanest cell. It is not merely a modulator.
-
-But it is not *required*: blocked ordering produces 29 events, so a design that only ever
-presented tasks in blocks would still have found the failure. I first wrote this
-subsection reading only `tasks_4`, whose 1.4x ratio is the weakest in the table, and
-concluded interleaving was incidental. Reading the cell that was built to be clean says
-otherwise. The lesson is the one this document keeps relearning: the cell with the most
-events is not the cell with the most signal.
-
-### Similarity costs far more accuracy than task count does
+### The same-kind cell changes more than similarity
 
 The same cell produced a second result I did not anticipate. At **identical** task count,
 operation count and padding, swapping the second task from a different kind to the same
@@ -262,23 +255,51 @@ kind costs `qwen2.5-coder:7b` its entire score:
 | `same_kind_2` | a second shopping list | **0.000** |
 | `tasks_4` | three more tasks | 0.400 |
 
-Two *similar* tasks are harder than four *dissimilar* ones. `gemma4:12b` shows the same
-sign at a fraction of the size (0.880 → 0.720) and **zero misattribution in all 350 of its
-conversations**, including both same-kind cells — it keeps two shopping lists apart where
-qwen cannot.
+The earlier write-up called `tasks_4` “four dissimilar tasks,” which was false: it contains
+two shopping and two schedule instances, hence two same-kind pairs. `gemma4:12b` shows the
+same two-task blocked-accuracy direction at a fraction of the size (0.880 → 0.720) and
+records zero misattribution across its 350 conversations.
 
 **Two caveats on this cell.** First, qwen's `same_kind_2` sits on the **floor** (0.000
 blocked, 0.040 interleaved), so its ordering delta is uninterpretable — you cannot fall
-below zero. It answers "does similarity hurt?" decisively and "does interleaving hurt when
-tasks are similar?" not at all. Lifting it off the floor needs a lower `n_ops` for that
-cell, which is the same per-cell calibration gap as §4. gemma's copy is not at the floor,
-so its +4.0pp is interpretable, and it shows no switch cost. Second, "similarity" here
-bundles same-kind structure with overlapping item semantics; the design does not separate
-those two either.
+below zero. It supplies a large descriptive contrast but cannot answer “does similarity
+hurt?” because the task mechanics and exposure also change; it cannot estimate whether
+interleaving hurts similar tasks either. Lifting it off the floor needs a lower `n_ops`
+for that cell, which is the same per-cell calibration gap as §4. Gemma's copy is not at
+the floor, so its +4.0pp is estimable but inconclusive. Second, “similarity” bundles task
+mechanics, same-kind structure and item semantics; the design does not separate them.
 
 ---
 
-## 5c. The negative control is weaker than it looks
+## 5c. Fixed ordering confounds switching with serial position and recency
+
+Blocked conversations always present task slots in one fixed order. Interleaved
+conversations redistribute each task's operations through the transcript. Early blocked
+tasks therefore finish farther from the final query, while later tasks receive a recency
+advantage; the interleaved arm has a different distance profile.
+
+The result is a matched-token **ordering effect**, not an isolated switch-cost estimate.
+The one-task control cannot detect this because its two prompts are byte-identical. A
+confirmatory design must rotate blocked-task order and the interleaved starting slot by
+seed, then report accuracy by task slot and distance from the last state mutation.
+
+---
+
+## 5d. Some imperative templates blur instruction and entity boundaries
+
+Templates such as “Stick {item} on the list” and “Book {title}” can be interpreted with
+the leading verb as part of the entity. The committed sample contains outputs such as
+`stick yoghurt`, which the scorer records as a dropped expected item plus an absorbed
+extra item. That is a real model failure on the prompt, but it is not clean evidence of
+state forgetting or hallucination.
+
+Changing or normalising those templates after inspecting outcomes would be post-hoc. The
+safe disposition is to disclose the issue here and replace the ambiguous templates before
+the counterbalanced confirmatory run.
+
+---
+
+## 5e. The negative control is weaker than it looks
 
 `ctrl_1task` reports delta **+0.0pp** with **0/25** discordance on both models, and that
 reads as a strong validation. Most of it is true by construction.
@@ -372,41 +393,42 @@ measured on one condition rather than all of them.
 
 ---
 
-## 9. Statistical power — the sweep is badly underpowered, and here is by how much
+## 9. Observed-data sensitivity — the sweep cannot resolve modest effects
 
-This is not a hedge; it is simulated from the discordance actually observed
-(`tools/power_analysis.py`, output in `results/POWER.md`). At the sweep's **n=25** pairs
-per cell, exact McNemar at alpha=0.05 with the observed 23% mean discordance:
+This post-hoc simulation plugs the 23% mean discordance across heterogeneous observed
+cells into a simplified exact-McNemar model (`tools/power_analysis.py`, output in
+`results/POWER.md`). It is a sensitivity diagnostic, not prospective design power:
 
 | true effect | n=25 | n=50 | n=100 | n=200 | n=400 |
 |---|---:|---:|---:|---:|---:|
-| 6.8 pp | 3% | 12% | 20% | 48% | 76% |
-| 11.3 pp | 9% | 28% | 59% | 92% | 100% |
-| 15.9 pp | 16% | 57% | 94% | 100% | 100% |
+| 6.8 pp | 4% | 10% | 22% | 48% | 80% |
+| 11.3 pp | 9% | 28% | 62% | 92% | 100% |
+| 15.9 pp | 19% | 59% | 92% | 100% | 100% |
 
-**At n=25 this design has ~3% power against a 7-point effect and ~9% against an 11-point
-one.** It cannot reliably detect anything smaller than roughly 16 points.
+**At n=25 this model gives ~4% power against a 7-point effect and ~9% against an 11-point
+one.** It cannot reliably detect even an approximately 16-point effect.
 
-The consequence for reading the results: the pre-registered primary cell came back at
+The consequence for reading the results: the repository-prespecified primary came back at
 −12.0pp, p=0.508, and that null carries almost no information. Its discordant counts were
 b=6, c=3 — interleaving broke six conversations and fixed three, and nine discordant pairs
 cannot resolve a 12-point effect from noise. It is not "ordering did not matter"; it is a
 sample too small to separate the directions.
 
-Note the table's own warning about the exploratory cells. `tasks_4` reached p=0.039 at a
-28-point effect — comfortably above the ~16-point detection floor, so that one is not a
-power artifact. But `len_short` at −16.0pp did *not* reach significance, and at 16 points
-the design has only 16% power, so that null is uninformative rather than evidence of
-nothing.
+Note the table's own warning about the exploratory cells. `tasks_4` reached raw p=0.039,
+but its Bonferroni-adjusted p is 0.430 in the 11-test exploratory family. `len_short` at
+−16.0pp did not reach significance, and at 16 points the sensitivity simulation is only
+19%. These
+cells generate hypotheses; neither supplies confirmatory evidence.
 
 **The grid previously opened at n=30, a sample size no cell ever ran** — so every power
 figure quoted to qualify these results was for a larger sample than produced them, which
 flattered them slightly. The narrative sentence in `POWER.md` is now derived from the
 generated table rather than written beside it.
 
-Reaching ~90% power against an 11-point effect needs roughly **200 pairs per cell**, eight
-times what was run; 100 pairs buys 59%. That is the single cheapest improvement available and it is the
-first thing more compute should buy.
+In this post-hoc simulation, reaching ~90% power against an 11-point effect needs roughly
+**200 pairs per cell**, eight times what was run; 100 pairs is about 62%. A prospective
+analysis should use a justified discordance assumption rather than the heterogeneous
+observed-cell mean used here.
 
 ---
 
@@ -432,12 +454,3 @@ that overlapped, and should not be read as a throughput measurement.
 Clean per-model timings are the ones recorded separately during the pre-flight
 benchmark: prefill ~274-348 tok/s and generation ~16-21 tok/s on `qwen2.5-coder:7b`,
 measured with nothing else on the GPU.
-
----
-
-## 12. `bugqueue` is not token-matched
-
-The sequential-defect track compares accumulate (pile reports) vs ticket (report-fix
-pacing). REPORT and FIX turns differ, so unlike `taskswitch` the orderings are not the
-identical multiset of tokens. It does not execute code — symbol values stand in for
-function return values.

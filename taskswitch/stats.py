@@ -18,6 +18,7 @@ recorded next to it, because "why this test?" is the question this analysis invi
 from __future__ import annotations
 
 import math
+from collections.abc import Hashable, Iterable
 from dataclasses import dataclass
 
 import numpy as np
@@ -107,11 +108,16 @@ def paired_bootstrap(blocked: list[bool], interleaved: list[bool],
     rng = np.random.default_rng(seed)
     idx = rng.integers(0, len(b), size=(n_boot, len(b)))
     deltas = i[idx].mean(axis=1) - b[idx].mean(axis=1)
-    lo, hi = np.percentile(deltas, [2.5, 97.5])
-    return (delta, float(lo), float(hi))
+    bounds = np.asarray(np.percentile(deltas, [2.5, 97.5]), dtype=float)
+    return (delta, float(bounds[0]), float(bounds[1]))
 
 
-def clustered_se(per_task: list[bool], cluster_ids: list[int]) -> float:
+def conversation_cluster_id(row: dict) -> tuple[str, str, int, str]:
+    """Unique conversation row, preserving within-conversation task dependence."""
+    return (row["model"], row.get("label") or row["cell"], row["seed"], row["ordering"])
+
+
+def clustered_se(per_task: list[bool], cluster_ids: list[Hashable]) -> float:
     """Cluster-robust standard error of a mean, clustered on conversation.
 
         SE = sqrt( (G/(G-1)) * sum_g ( sum_{i in g} (y_i - ybar) )^2 ) / n
@@ -123,13 +129,14 @@ def clustered_se(per_task: list[bool], cluster_ids: list[int]) -> float:
     if not per_task:
         return 0.0
     y = np.asarray(per_task, dtype=float)
-    g = np.asarray(cluster_ids)
     n, ybar = len(y), y.mean()
-    groups = np.unique(g)
-    G = len(groups)
+    grouped: dict[Hashable, list[float]] = {}
+    for value, cluster_id in zip(y, cluster_ids):
+        grouped.setdefault(cluster_id, []).append(float(value - ybar))
+    G = len(grouped)
     if G < 2:
         return float(y.std(ddof=1) / math.sqrt(n)) if n > 1 else 0.0
-    meat = sum(float(np.sum(y[g == k] - ybar)) ** 2 for k in groups)
+    meat = sum(sum(residuals) ** 2 for residuals in grouped.values())
     return float(math.sqrt(meat * (G / (G - 1))) / n)
 
 
@@ -143,6 +150,68 @@ def naive_se(per_task: list[bool]) -> float:
 
 def bonferroni(p_values: list[float]) -> list[float]:
     """Family-wise correction, capped at 1. Applied only to the secondary comparisons;
-    the primary contrast is pre-registered and reported uncorrected."""
+    the primary contrast is repository-prespecified and reported uncorrected."""
     m = len(p_values)
     return [min(1.0, p * m) for p in p_values]
+
+
+PRIMARY_MODEL = "qwen2.5-coder:7b"
+PRIMARY_LABEL = "len_medium"
+CONTROL_LABEL = "ctrl_1task"
+
+
+@dataclass(frozen=True)
+class ComparisonPValue:
+    """Raw and family-adjusted inference for one model-condition comparison."""
+
+    raw: float
+    adjusted: float | None
+    role: str
+    family_size: int
+
+
+def comparison_role(model: str, label: str) -> str:
+    """Identify the repository-prespecified primary, controls, and exploratory rows."""
+    if model == PRIMARY_MODEL and label == PRIMARY_LABEL:
+        return "primary"
+    if label == CONTROL_LABEL:
+        return "control"
+    return "exploratory"
+
+
+def adjust_comparison_pvalues(
+        comparisons: Iterable[tuple[str, str, float]],
+) -> dict[tuple[str, str], ComparisonPValue]:
+    """Apply one Bonferroni correction across all exploratory model-cell tests.
+
+    The exact repository-prespecified primary is reported raw and separately. Controls
+    test an instrument invariant rather than an effect hypothesis, so they are also
+    outside the exploratory family. The family size is derived once from the complete
+    set of unique comparison keys, making it independent of input ordering.
+    """
+    raw_by_key: dict[tuple[str, str], float] = {}
+    for model, label, raw in comparisons:
+        key = (model, label)
+        if key in raw_by_key:
+            raise ValueError(f"duplicate comparison {key!r}")
+        if not 0.0 <= raw <= 1.0:
+            raise ValueError(f"p-value outside [0, 1] for {key!r}: {raw}")
+        raw_by_key[key] = raw
+
+    roles = {key: comparison_role(*key) for key in raw_by_key}
+    exploratory_keys = sorted(key for key, role in roles.items()
+                              if role == "exploratory")
+    family_size = len(exploratory_keys)
+    adjusted = dict(zip(
+        exploratory_keys,
+        bonferroni([raw_by_key[key] for key in exploratory_keys]),
+    ))
+    return {
+        key: ComparisonPValue(
+            raw=raw,
+            adjusted=adjusted.get(key),
+            role=roles[key],
+            family_size=family_size if roles[key] == "exploratory" else 0,
+        )
+        for key, raw in raw_by_key.items()
+    }

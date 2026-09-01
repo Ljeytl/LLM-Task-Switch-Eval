@@ -22,16 +22,15 @@ no information about ordering, so the discordant share IS the usable sample.
 
 Mean discordance across non-control cells: **23%**
 
-## Power
+## Observed-data sensitivity
 
-Simulated, exact McNemar, alpha = 0.05, discordance 23%, 400 replicates per cell.
+Simulated, exact McNemar, alpha = 0.05, discordance 23%, 5,000 replicates per cell. This plugs a mean across heterogeneous observed cells into a simplified model; it is not prospective design power.
 
 | true effect | n=25 | n=50 | n=100 | n=200 | n=400 |
 |---|---:|---:|---:|---:|---:|
-| 6.8 pp | 3% | 12% | 20% | 48% | 76% |
-| 11.3 pp | 9% | 28% | 59% | 92% | 100% |
-| 15.9 pp | 16% | 57% | 94% | 100% | 100% |
+| 6.8 pp | 4% | 10% | 22% | 48% | 80% |
+| 11.3 pp | 9% | 28% | 62% | 92% | 100% |
+| 15.9 pp | 19% | 59% | 92% | 100% | 100% |
 
 **Read this before reading any null in the results.** At the n=25 per cell this sweep actually ran, the design has
-roughly 9% power against an 11-point effect. A non-significant cell is evidence
-of insufficient sample, not evidence of no effect.
+roughly 9% power against an 11-point effect. A non-significant cell is therefore inconclusive at this sample size; it is not evidence of no effect.
