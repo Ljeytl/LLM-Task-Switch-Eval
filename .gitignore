@@ -10,4 +10,9 @@ files_unzipped/
 .pytest_cache/
 # The interview brief is the company's document, not mine to redistribute.
 *.pdf
+# Private prep: walkthrough script, timing, question bank — not for the repo.
+prep/
+results/cache/bugs/
+results/bugs_sweep.jsonl
+results/bugs_demo.jsonl
 taskswitch.egg-info/

@@ -126,6 +126,18 @@ Any accuracy delta is switch and re-entry cost.
 See [`docs/WALKTHROUGH.md`](docs/WALKTHROUGH.md) for one conversation traced end to end,
 generated from real output.
 
+### Sequential related bugs (`bugqueue`)
+
+A second track models **piling defect reports before fixes land** — the pattern where a
+user drops 3–4 related bugs on one module in quick succession. Paired comparison:
+accumulate (all reports, then all fixes) vs ticket (report-fix pacing). Mechanical
+oracle on symbol values in `checkout.py`. See [`docs/BUGQUEUE.md`](docs/BUGQUEUE.md).
+
+```bash
+.venv/bin/python -m pytest tests/test_bugqueue.py -q
+.venv/bin/python run_bugs.py --demo
+```
+
 > **Working offline?** Run `./tools/preflight.sh` while you still have wifi — it verifies
 > the venv, models, cache and every offline command end to end. See
 > [`OFFLINE.md`](OFFLINE.md).

@@ -432,3 +432,17 @@ that overlapped, and should not be read as a throughput measurement.
 Clean per-model timings are the ones recorded separately during the pre-flight
 benchmark: prefill ~274-348 tok/s and generation ~16-21 tok/s on `qwen2.5-coder:7b`,
 measured with nothing else on the GPU.
+
+---
+
+## 12. `bugqueue` is not token-matched
+
+The sequential-defect track (`bugqueue/`, `run_bugs.py`) compares **accumulate**
+(all reports then all fixes) against **ticket** (report-fix pacing). REPORT and FIX
+turns are different strings, so unlike `taskswitch` the two orderings are not the
+identical multiset of tokens. The comparison holds **operation count and final oracle
+state** constant, not prompt length. Any delta may partly reflect longer context before
+fixes land, which is intentional — that is the usage pattern being modeled.
+
+It also does not execute code. Symbol values stand in for function return values. A
+follow-on domain with real `pytest` grading would be closer to coding-agent eval.

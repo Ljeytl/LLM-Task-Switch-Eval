@@ -1,0 +1,18 @@
+# bugqueue sweep — sequential related defects in checkout.py
+#
+# Primary comparison: accumulate (pile reports) vs ticket (report-fix pacing).
+# Not token-matched — see docs/BUGQUEUE.md.
+
+models:
+  - qwen2.5-coder:7b
+
+n_pairs: 25
+n_false: 1
+seed0: 1
+
+cells:
+  - {label: "bugs_2", n_bugs: 2, n_noise: 2}
+  - {label: "bugs_3", n_bugs: 3, n_noise: 2}
+  - {label: "bugs_4", n_bugs: 4, n_noise: 2}   # primary — user's 3-4 bug scenario
+  - {label: "bugs_4_noise_0", n_bugs: 4, n_noise: 0}
+  - {label: "bugs_4_noise_8", n_bugs: 4, n_noise: 8}
