@@ -24,6 +24,16 @@
   unnamed turn is ambiguous — and an ambiguous turn makes the answer key unanswerable.
 - `parsed` is now a plain slot-keyed dict; `FinalState` cannot express N slots.
 
+### Found
+- **Misattribution is a same-kind failure.** 0 events across 300 two-task conversations
+  (shopping + schedule), 8 across 50 three-task ones (two shopping lists + schedule) --
+  every one a grocery item on the hardware list. v1's headline zero was a property of the
+  instrument, not the models: two dissimilar tasks cannot produce the failure the
+  taxonomy was built to detect.
+- **Switch cost grows with live-state count.** tasks_2 -12.0pp -> tasks_3 -20.0pp, with
+  blocked accuracy 0.640 -> 0.400, even though ops-per-task FELL (6 ops split 3 ways
+  rather than 2). More states cost accuracy even as each state got simpler.
+
 ### Known
 - **The calibration is stale.** `n_ops = 6` was measured on v1 templates. v2 difficulty
   moved non-uniformly -- the control got harder (0.600 -> 0.320) while the primary got
@@ -104,6 +114,16 @@
   were expected.
 - `--config` alone now implies `--sweep`, matching the documented usage; argparse
   previously rejected it and the first sweep launch silently did nothing.
+
+### Found
+- **Misattribution is a same-kind failure.** 0 events across 300 two-task conversations
+  (shopping + schedule), 8 across 50 three-task ones (two shopping lists + schedule) --
+  every one a grocery item on the hardware list. v1's headline zero was a property of the
+  instrument, not the models: two dissimilar tasks cannot produce the failure the
+  taxonomy was built to detect.
+- **Switch cost grows with live-state count.** tasks_2 -12.0pp -> tasks_3 -20.0pp, with
+  blocked accuracy 0.640 -> 0.400, even though ops-per-task FELL (6 ops split 3 ways
+  rather than 2). More states cost accuracy even as each state got simpler.
 
 ### Known methodological gap
 - Difficulty was calibrated over `n_ops` with `n_noise` pinned at 0, but noise drives

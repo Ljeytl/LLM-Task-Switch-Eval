@@ -80,6 +80,30 @@ so "olive oil" became "olive". The other two were real: the scorer was calling s
 values hallucinations. A verifier is code too; a disagreement is a bug report against
 whichever side is wrong, and you have to look rather than trust either one.
 
+### 4b. The finding that only exists because I rebuilt the cut arm
+
+Worth its own beat, because it is the payoff for the D14 → D17 reversal.
+
+v1 reported **zero misattribution across 480 conversations**. I wrote that up as the most
+interesting result — the failure the whole taxonomy was designed to catch never happened
+— and honestly flagged that I could not tell whether models simply do not misfile, or
+whether a shopping list and a calendar are too dissimilar to confuse.
+
+v2 answers it. `tasks_3` is the first condition with **two lists of the same kind**:
+
+| | same-kind pair? | conversations | misattribution |
+|---|---|---:|---:|
+| 2-task cells | no | 300 | **0** |
+| `tasks_3` | yes | 50 | **8** |
+
+Every event is a grocery item landing on the hardware list. None cross between a list and
+a calendar.
+
+**The v1 zero was a property of the instrument, not of the models.** A benchmark built
+only from dissimilar task types would conclude that models never misfile, and would be
+wrong. That generalises past this project: an eval that never produces a failure mode has
+not shown the failure mode is absent.
+
 ### 5. Quality, and where it falls short
 - Token match verified against Ollama's own `prompt_eval_count`, not estimated
 - Calibration before the sweep: the originally planned `n_ops=24` sat at **0.00** blocked

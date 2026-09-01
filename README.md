@@ -8,6 +8,13 @@ lengths and four task counts to see what the cost actually scales with.
 > **Status:** research prototype. Findings are an existence proof on one synthetic
 > domain, not a benchmark. See [Limitations](docs/LIMITATIONS.md).
 
+**Headline (v2).** v1 found **zero misattribution in 480 conversations** and could not
+say whether models simply do not misfile, or whether a shopping list and a calendar are
+too dissimilar to confuse. v2 answers it: put **two lists of the same kind** in one
+conversation and misattribution appears immediately — 8 events in 50 conversations,
+every one of them a grocery item landing on the hardware list, versus **0 in 300**
+two-task conversations. *The v1 zero was a property of the instrument, not of the model.*
+
 **What we found.** Across 480 conversations at *exactly* matched token counts (480/480
 verified, zero drift), the **pre-registered primary comparison found no detectable switch
 cost** — and at n=30 it had no power to (§9). What the exploratory cells show is that

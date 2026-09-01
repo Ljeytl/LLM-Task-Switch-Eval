@@ -97,6 +97,29 @@ problem is never reported as a tracking problem.
 problems with different fixes. An aggregate accuracy number cannot tell you which one
 you have; the taxonomy comes free from the same diff.
 
+## The finding the two-task design could not produce
+
+v1 recorded **zero misattribution in 480 conversations** and could not interpret it. Two
+readings were available and it had no way to separate them: either models do not misfile
+operations across tasks, or two tasks of very different kinds are simply too dissimilar
+to confuse.
+
+v2's task-count arm settles it. `tasks_3` is the first condition containing **two lists
+of the same kind** — a grocery list and a hardware list, with disjoint vocabularies so a
+confusion is unmistakable:
+
+| cell | same-kind pair? | conversations | misattribution events |
+|---|---|---:|---:|
+| 2-task cells (shopping + schedule) | no | 300 | **0** |
+| `tasks_3` (2 shopping + 1 schedule) | yes | 50 | **8** |
+
+Every event is `shopping_0` ↔ `shopping_1`: grocery items landing on the hardware list.
+None cross between a list and a calendar.
+
+So the v1 zero was a property of the **instrument**, not of the models. Misattribution
+does happen; it needs two tasks similar enough to confuse. A benchmark built only from
+dissimilar task types would report that models never misfile, and would be wrong.
+
 ## What this does not show
 
 One synthetic domain with templated turns is not a benchmark. It is an existence proof
