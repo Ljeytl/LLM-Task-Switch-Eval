@@ -302,13 +302,29 @@ be reading more into it than is there, and I presented it that way before checki
 
 `tools/determinism_check.py` closes the gap: it runs both halves of a one-task pair with
 the cache **disabled**, so two independent calls receive the identical prompt, and reports
-how often they agree. That is the number that bounds how much of a measured delta could be
-noise. It asserts the byte-identity premise before measuring, so it cannot silently
-degrade into measuring ordering instead.
+how often they agree. It asserts the byte-identity premise before measuring, so it cannot
+silently degrade into measuring ordering instead.
+
+**Result, 15 pairs per model:**
+
+| model | identical outcome | identical parsed state |
+|---|---:|---:|
+| `qwen2.5-coder:7b` | 15/15 | 15/15 |
+| `gemma4:12b` | 15/15 | 15/15 |
+
+Not merely the same score — the same *parsed state*, byte for byte. At greedy decoding
+with a fixed seed, repeated identical prompts produced identical answers in 30/30 trials,
+so none of the measured deltas is explained by run-to-run variation. This is the number
+the negative control was being credited with and could not supply.
+
+The bound this gives is one-sided and modest: 0/30 flips puts the 95% upper bound on the
+flip rate at about 10% (rule of three), which is not small relative to the deltas being
+measured. It rules out gross nondeterminism, not a few points of it, and 15 pairs on
+one-task conversations may not represent the harder multi-task cells.
 
 ---
 
-## 6. Bit-exact reproducibility is not achievable
+## 6. Bit-exact reproducibility is not achievable (but outcomes were stable)
 
 Batch-invariant kernels do not exist on Metal, so identical inputs can produce slightly
 different logits depending on batching. Seeds, model tags and digests are logged, and
